@@ -1,0 +1,8 @@
+.DS_Store
+*.ipynb
+settings.json
+workloads/
+!workloads/small/*
+build
+html
+latex
