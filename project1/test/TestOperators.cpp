@@ -344,4 +344,47 @@ TEST_F(OperatorTest, ParallelJoin) {
     }
   }
 }
+//---------------------------------------------------------------------------
 }
+TEST_F(OperatorTest, ParallelChecksum) {
+  unsigned relBinding=5;
+  Scan r1Scan(r1,relBinding);
+
+  {
+    auto r1ScanPtr=make_unique<Scan>(r1Scan);
+    vector<SelectInfo> checkSumColumns;
+    ParallelChecksum checkSum(move(r1ScanPtr),checkSumColumns);
+    checkSum.run();
+    ASSERT_EQ(checkSum.checkSums.size(),0ull);
+  }
+  {
+    auto r1ScanPtr=make_unique<Scan>(r1Scan);
+    vector<SelectInfo> checkSumColumns;
+    checkSumColumns.emplace_back(0,relBinding,0);
+    checkSumColumns.emplace_back(0,relBinding,2);
+    ParallelChecksum checkSum(move(r1ScanPtr),checkSumColumns);
+    checkSum.run();
+
+    ASSERT_EQ(checkSum.checkSums.size(),2ull);
+    uint64_t expectedSum=0;
+    for (unsigned i=0;i<r1.size;++i) {
+      expectedSum+=r1.columns[0][i];
+    }
+    ASSERT_EQ(checkSum.checkSums[0],expectedSum);
+    ASSERT_EQ(checkSum.checkSums[1],expectedSum);
+  }
+  {
+    SelectInfo sInfo(0,relBinding,2);
+    uint64_t constant=3;
+    FilterInfo fInfo(sInfo,constant,FilterInfo::Comparison::Equal);
+    FilterScan r1ScanFilter(r1,fInfo);
+    auto filterScanPtr=make_unique<FilterScan>(r1ScanFilter);
+    vector<SelectInfo> checkSumColumns;
+    checkSumColumns.emplace_back(0,relBinding,2);
+    ParallelChecksum checkSum(move(filterScanPtr),checkSumColumns);
+    checkSum.run();
+    ASSERT_EQ(checkSum.checkSums.size(),1ull);
+    ASSERT_EQ(checkSum.checkSums[0],constant);
+  }
+}
+//---------------------------------------------------------------------------

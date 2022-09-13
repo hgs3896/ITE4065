@@ -364,3 +364,63 @@ void ParallelJoin::run()
   resultSize = tmpResults.size() ? tmpResults[0].size() : 0;
 }
 //---------------------------------------------------------------------------
+void ParallelChecksum::run()
+  // Run
+{
+  for (auto& sInfo : colInfo) {
+    input->require(sInfo);
+  }
+  input->run();
+  auto results=input->getResults();
+
+  if(input->resultSize < 500){
+    for (auto& sInfo : colInfo) {
+      auto colId=input->resolve(sInfo);
+      auto resultCol=results[colId];
+      uint64_t sum=0;
+      resultSize=input->resultSize;
+      for (auto iter=resultCol,limit=iter+input->resultSize;iter!=limit;++iter)
+        sum+=*iter;
+      checkSums.push_back(sum);
+    }
+  }else{
+    std::vector<std::vector<std::future<uint64_t>>> tasks;
+    tasks.resize(colInfo.size());
+    
+    size_t col_idx;
+
+    for (col_idx = 0;col_idx < colInfo.size(); ++col_idx) {
+      auto& sInfo = colInfo[col_idx];
+      auto colId=input->resolve(sInfo);
+      auto resultCol=results[colId];
+      
+      constexpr auto chunk_size = 1 << 12;
+      const auto job_count = (input->resultSize + chunk_size - 1) / chunk_size;
+      const size_t MAX_JOBS = input->resultSize;
+
+      for(size_t i = 0; i < job_count; ++i){
+        const auto begin = &resultCol[i * chunk_size],
+                   end = &resultCol[min((i + 1) * chunk_size, MAX_JOBS)];
+        tasks[col_idx].emplace_back(pool.EnqueueJob(
+            [](uint64_t *begin, uint64_t *end) {
+              uint64_t sum = 0;
+              for (auto iter = begin; iter != end; ++iter)
+                sum += *iter;
+              return sum;
+            },
+            begin, end));
+      }
+    }
+
+    resultSize=input->resultSize;
+    for (col_idx = 0; col_idx < colInfo.size(); ++col_idx) {
+      uint64_t sum = 0;
+      for (auto &task : tasks[col_idx]) {
+        task.wait();
+        sum += task.get();
+      }
+      checkSums.push_back(sum);
+    }
+  }
+}
+//---------------------------------------------------------------------------

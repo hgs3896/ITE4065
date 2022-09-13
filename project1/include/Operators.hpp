@@ -191,3 +191,19 @@ class ParallelJoin : public Operator {
   void run() override;
 };
 //---------------------------------------------------------------------------
+class ParallelChecksum : public Operator {
+  /// The input operator
+  std::unique_ptr<Operator> input;
+  /// The join predicate info
+  std::vector<SelectInfo>& colInfo;
+
+  public:
+  std::vector<uint64_t> checkSums;
+  /// The constructor
+  ParallelChecksum(std::unique_ptr<Operator>&& input,std::vector<SelectInfo>& colInfo) : input(std::move(input)), colInfo(colInfo) {};
+  /// Request a column and add it to results
+  bool require(SelectInfo info) override { throw; /* check sum is always on the highest level and thus should never request anything */ }
+  /// Run
+  void run() override;
+};
+//---------------------------------------------------------------------------

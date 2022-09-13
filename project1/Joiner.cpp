@@ -98,7 +98,7 @@ string Joiner::join(QueryInfo& query)
     };
   }
 
-  Checksum checkSum(move(root),query.selections);
+  ParallelChecksum checkSum(move(root),query.selections);
   checkSum.run();
 
 
