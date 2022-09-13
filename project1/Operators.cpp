@@ -5,7 +5,7 @@
 #include <iostream>
 #include <vector>
 
-static ThreadPool pool(7);
+static ThreadPool pool;
 
 //---------------------------------------------------------------------------
 using namespace std;
