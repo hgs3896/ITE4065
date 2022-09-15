@@ -88,7 +88,7 @@ string Joiner::join(QueryInfo& query)
       case QueryGraphProvides::Both:
         // All relations of this join are already used somewhere else in the query.
         // Thus, we have either a cycle in our join graph or more than one join predicate per join.
-        root=make_unique<SelfJoin>(move(root),pInfo);
+        root=make_unique<ParallelSelfJoin>(move(root),pInfo);
         break;
       case QueryGraphProvides::None:
         // Process this predicate later when we can connect it to the other joins
@@ -98,7 +98,7 @@ string Joiner::join(QueryInfo& query)
     };
   }
 
-  ParallelChecksum checkSum(move(root),query.selections);
+  Checksum checkSum(move(root),query.selections);
   checkSum.run();
 
 

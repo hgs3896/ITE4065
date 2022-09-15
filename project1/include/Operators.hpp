@@ -191,6 +191,30 @@ class ParallelJoin : public Operator {
   void run() override;
 };
 //---------------------------------------------------------------------------
+class ParallelSelfJoin : public Operator {
+  /// The input operators
+  std::unique_ptr<Operator> input;
+  /// The join predicate info
+  PredicateInfo& pInfo;
+  /// Copy tuple to result
+  void copy2Result(uint64_t id);
+  /// The required IUs
+  std::set<SelectInfo> requiredIUs;
+
+  /// The entire input data
+  std::vector<uint64_t*> inputData;
+  /// The input data that has to be copied
+  std::vector<uint64_t*>copyData;
+
+  public:
+  /// The constructor
+  ParallelSelfJoin(std::unique_ptr<Operator>&& input,PredicateInfo& pInfo) : input(std::move(input)), pInfo(pInfo) {};
+  /// Require a column and add it to results
+  bool require(SelectInfo info) override;
+  /// Run
+  void run() override;
+};
+//---------------------------------------------------------------------------
 class ParallelChecksum : public Operator {
   /// The input operator
   std::unique_ptr<Operator> input;

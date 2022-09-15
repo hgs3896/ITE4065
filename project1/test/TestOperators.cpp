@@ -284,7 +284,6 @@ TEST_F(OperatorTest, Joiner) {
   }
 }
 //---------------------------------------------------------------------------
-//---------------------------------------------------------------------------
 TEST_F(OperatorTest, ParallelJoin) {
   unsigned lRid=0,rRid=1;
   unsigned r1Bind=0,r2Bind=1;
@@ -342,6 +341,28 @@ TEST_F(OperatorTest, ParallelJoin) {
     for (unsigned j=0;j<join.resultSize;++j) {
       ASSERT_EQ(resultCol[j],r1.columns[0][j]);
     }
+  }
+}
+//---------------------------------------------------------------------------
+TEST_F(OperatorTest, ParallelSelfJoin) {
+  unsigned relBinding=5;
+  Scan r1Scan(r1,relBinding);
+  {
+    PredicateInfo pInfo(SelectInfo(1,relBinding,1),SelectInfo(1,relBinding,2));
+    ParallelSelfJoin selfJoin(make_unique<Scan>(r1Scan),pInfo);
+    selfJoin.run();
+    ASSERT_EQ(selfJoin.resultSize,r1.size);
+    ASSERT_EQ(selfJoin.getResults().size(),0ull);
+  }
+  {
+    PredicateInfo pInfo(SelectInfo(1,relBinding,1),SelectInfo(1,relBinding,2));
+    ParallelSelfJoin selfJoin(make_unique<Scan>(r1Scan),pInfo);
+    selfJoin.require(SelectInfo(relBinding,0));
+    selfJoin.run();
+    selfJoin.resolve(SelectInfo(relBinding,0));
+    ASSERT_EQ(selfJoin.resultSize,r1.size);
+    auto results=selfJoin.getResults();
+    ASSERT_EQ(results.size(),1ull);
   }
 }
 //---------------------------------------------------------------------------

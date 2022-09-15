@@ -13,6 +13,9 @@ public:
     ~ThreadPool();
     template<class F, class... Args>
     auto EnqueueJob(F&& f, Args&&... args) -> std::future<decltype(f(args...))>;
+    size_t GetNumThreads() const{
+        return num_threads_;
+    }
 
 private:
     // 총 Worker 쓰레드의 개수.
@@ -35,7 +38,7 @@ ThreadPool::ThreadPool(size_t num_threads)
     :num_threads_(num_threads), stop_all(false)
 {
     if(num_threads_ == 0){
-        num_threads_ = std::thread::hardware_concurrency();
+        num_threads_ = 2 * std::thread::hardware_concurrency();
     }
     worker_threads_.reserve(num_threads_);
     for (size_t i = 0; i < num_threads_; ++i) {
