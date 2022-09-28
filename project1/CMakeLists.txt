@@ -17,7 +17,12 @@ target_include_directories(database PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
     PRIVATE src)
-target_link_libraries(database pthread)
+
+target_link_libraries(
+    database
+    PUBLIC pthread
+    PUBLIC "/usr/local/lib/libjemalloc${CMAKE_STATIC_LIBRARY_SUFFIX}"
+)
 
 OPTION(FORCE_TESTS "Build tests, regardless of build type." ON)
 if (CMAKE_BUILD_TYPE MATCHES "[Dd][Ee][Bb][Uu][Gg]" OR FORCE_TESTS)
