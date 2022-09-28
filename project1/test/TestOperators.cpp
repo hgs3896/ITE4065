@@ -9,6 +9,8 @@ class OperatorTest : public testing::Test {
   protected:
     Relation r1=Utils::createRelation(5,3);
     Relation r2=Utils::createRelation(10,5);
+    Relation r3=Utils::createRelation(10000,3);
+    Relation r4=Utils::createRelation(50000,5);
 };
 //---------------------------------------------------------------------------
 TEST_F(OperatorTest, Scan) {
@@ -284,7 +286,7 @@ TEST_F(OperatorTest, Joiner) {
   }
 }
 //---------------------------------------------------------------------------
-TEST_F(OperatorTest, ParallelJoin) {
+TEST_F(OperatorTest, ParallelSortMergeJoin) {
   unsigned lRid=0,rRid=1;
   unsigned r1Bind=0,r2Bind=1;
   unsigned lColId=1,rColId=3;
@@ -297,7 +299,7 @@ TEST_F(OperatorTest, ParallelJoin) {
     PredicateInfo pInfo(SelectInfo(lRid,r1Bind,lColId),SelectInfo(rRid,r2Bind,rColId));
     auto r1ScanPtr=make_unique<Scan>(r1Scan);
     auto r2ScanPtr=make_unique<Scan>(r2Scan);
-    ParallelJoin join(move(r1ScanPtr),move(r2ScanPtr),pInfo);
+    ParallelSortMergeJoin join(move(r1ScanPtr),move(r2ScanPtr),pInfo);
     join.run();
   }
   {
@@ -306,7 +308,7 @@ TEST_F(OperatorTest, ParallelJoin) {
     Scan r1Scan2(r1,1);
     auto leftPtr=make_unique<Scan>(r1Scan);
     auto rightPtr=make_unique<Scan>(r1Scan2);
-    ParallelJoin join(move(leftPtr),move(rightPtr),pInfo);
+    ParallelSortMergeJoin join(move(leftPtr),move(rightPtr),pInfo);
     join.require(SelectInfo(r1Bind,0));
     join.run();
 
@@ -325,7 +327,7 @@ TEST_F(OperatorTest, ParallelJoin) {
     auto leftPtr=make_unique<Scan>(r2Scan);
     auto rightPtr=make_unique<Scan>(r1Scan);
     PredicateInfo pInfo(SelectInfo(1,r2Bind,1),SelectInfo(0,r1Bind,2));
-    ParallelJoin join(move(leftPtr),move(rightPtr),pInfo);
+    ParallelSortMergeJoin join(move(leftPtr),move(rightPtr),pInfo);
     join.require(SelectInfo(r1Bind,1));
     join.require(SelectInfo(r2Bind,3));
     // Request a columns two times (should not have an effect)
@@ -340,6 +342,67 @@ TEST_F(OperatorTest, ParallelJoin) {
     auto resultCol=results[resColId];
     for (unsigned j=0;j<join.resultSize;++j) {
       ASSERT_EQ(resultCol[j],r1.columns[0][j]);
+    }
+  }
+}
+//---------------------------------------------------------------------------
+TEST_F(OperatorTest, ParallelHashJoin) {
+  unsigned lRid=0,rRid=1;
+  unsigned r3Bind=0,r4Bind=1;
+  unsigned lColId=1,rColId=3;
+
+  Scan r3Scan(r3,r3Bind);
+  Scan r4Scan(r4,r4Bind);
+
+  {
+    PredicateInfo pInfo(SelectInfo(lRid,r3Bind,lColId),SelectInfo(rRid,r4Bind,rColId));
+    auto r3ScanPtr=make_unique<Scan>(r3Scan);
+    auto r4ScanPtr=make_unique<Scan>(r4Scan);
+    ParallelHashJoin join(move(r3ScanPtr),move(r4ScanPtr),pInfo);
+    join.run();
+  }
+  {
+    // Self join
+    PredicateInfo pInfo(SelectInfo(0,0,1),SelectInfo(0,1,2));
+    Scan r3Scan2(r3,1);
+    auto leftPtr=make_unique<Scan>(r3Scan);
+    auto rightPtr=make_unique<Scan>(r3Scan2);
+    ParallelHashJoin join(move(leftPtr),move(rightPtr),pInfo);
+    join.require(SelectInfo(r3Bind,0));
+    join.run();
+
+    ASSERT_EQ(join.resultSize,r3.size);
+
+    auto resColId=join.resolve(SelectInfo{r3Bind,0});
+    auto results=join.getResults();
+    ASSERT_EQ(results.size(),1ull);
+    auto resultCol=results[resColId];
+    std::sort(resultCol, resultCol + join.resultSize);
+    for (unsigned j=0;j<join.resultSize;++j) {
+      ASSERT_EQ(resultCol[j],r3.columns[0][j]);
+    }
+  }
+  {
+    // Join r3 and r4 (should have same result as r3 and r3)
+    auto leftPtr=make_unique<Scan>(r4Scan);
+    auto rightPtr=make_unique<Scan>(r3Scan);
+    PredicateInfo pInfo(SelectInfo(1,r4Bind,1),SelectInfo(0,r3Bind,2));
+    ParallelHashJoin join(move(leftPtr),move(rightPtr),pInfo);
+    join.require(SelectInfo(r3Bind,1));
+    join.require(SelectInfo(r4Bind,3));
+    // Request a columns two times (should not have an effect)
+    join.require(SelectInfo(r4Bind,3));
+    join.run();
+
+    ASSERT_EQ(join.resultSize,r3.size);
+
+    auto resColId=join.resolve(SelectInfo{r4Bind,3});
+    auto results=join.getResults();
+    ASSERT_EQ(results.size(),2ull);
+    auto resultCol=results[resColId];
+    std::sort(resultCol, resultCol + join.resultSize);
+    for (unsigned j=0;j<join.resultSize;++j) {
+      ASSERT_EQ(resultCol[j],r3.columns[0][j]);
     }
   }
 }

@@ -9,6 +9,9 @@
 #include <set>
 #include "Relation.hpp"
 #include "Parser.hpp"
+
+constexpr size_t L2CacheLineSize = 256 << 10;
+
 //---------------------------------------------------------------------------
 namespace std {
   /// Simple hash function to enable use with unordered_map
@@ -47,13 +50,13 @@ class Operator {
 class Scan : public Operator {
   protected:
   /// The relation
-  Relation& relation;
+  const Relation& relation;
   /// The name of the relation in the query
   unsigned relationBinding;
 
   public:
   /// The constructor
-  Scan(Relation& r,unsigned relationBinding) : relation(r), relationBinding(relationBinding) {};
+  Scan(const Relation& r,unsigned relationBinding) : relation(r), relationBinding(relationBinding) {};
   /// Require a column and add it to results
   bool require(SelectInfo info) override;
   /// Run
@@ -63,6 +66,7 @@ class Scan : public Operator {
 };
 //---------------------------------------------------------------------------
 class FilterScan : public Scan {
+  protected:
   /// The filter info
   std::vector<FilterInfo> filters;
   /// The input data
@@ -74,11 +78,23 @@ class FilterScan : public Scan {
 
   public:
   /// The constructor
-  FilterScan(Relation& r,std::vector<FilterInfo> filters) : Scan(r,filters[0].filterColumn.binding), filters(filters)  {};
+  FilterScan(const Relation& r,std::vector<FilterInfo> filters) : Scan(r,filters[0].filterColumn.binding), filters(filters)  {};
   /// The constructor
-  FilterScan(Relation& r,FilterInfo& filterInfo) : FilterScan(r,std::vector<FilterInfo>{filterInfo}) {};
+  FilterScan(const Relation& r,FilterInfo& filterInfo) : FilterScan(r,std::vector<FilterInfo>{filterInfo}) {};
   /// Require a column and add it to results
   bool require(SelectInfo info) override;
+  /// Run
+  void run() override;
+  /// Get  materialized results
+  virtual std::vector<uint64_t*> getResults() override { return Operator::getResults(); }
+};
+//---------------------------------------------------------------------------
+class ParallelFilterScan : public FilterScan {
+  public:
+  /// The constructor
+  ParallelFilterScan(const Relation& r,std::vector<FilterInfo> filters) : FilterScan(r,filters) {}
+  /// The constructor
+  ParallelFilterScan(const Relation& r,FilterInfo& filterInfo) : ParallelFilterScan(r,std::vector<FilterInfo>{filterInfo}) {};
   /// Run
   void run() override;
   /// Get  materialized results
@@ -159,18 +175,16 @@ class Checksum : public Operator {
   void run() override;
 };
 //---------------------------------------------------------------------------
-class ParallelJoin : public Operator {
+class ParallelSortMergeJoin : public Operator {
   /// The input operators
   std::unique_ptr<Operator> left, right;
   /// The join predicate info
   PredicateInfo& pInfo;
+  /// Copy tuple to result
+  void copy2Result(uint64_t leftId,uint64_t rightId);
   /// Create mapping for bindings
   void createMappingForBindings();
-
-  using HT=std::unordered_multimap<uint64_t,uint64_t>;
-
-  /// The hash table for the join
-  HT hashTable;
+  
   /// Columns that have to be materialized
   std::unordered_set<SelectInfo> requestedColumns;
   /// Left/right columns that have been requested
@@ -184,7 +198,44 @@ class ParallelJoin : public Operator {
 
   public:
   /// The constructor
-  ParallelJoin(std::unique_ptr<Operator>&& left,std::unique_ptr<Operator>&& right,PredicateInfo& pInfo) : left(std::move(left)), right(std::move(right)), pInfo(pInfo) {};
+  ParallelSortMergeJoin(std::unique_ptr<Operator>&& left,std::unique_ptr<Operator>&& right,PredicateInfo& pInfo) : left(std::move(left)), right(std::move(right)), pInfo(pInfo) {};
+  /// Require a column and add it to results
+  bool require(SelectInfo info) override;
+  /// Run
+  void run() override;
+};
+//---------------------------------------------------------------------------
+class ParallelHashJoin : public Operator {
+  /// The input operators
+  std::unique_ptr<Operator> left, right;
+  /// The join predicate info
+  PredicateInfo& pInfo;
+  /// Create mapping for bindings
+  void createMappingForBindings();
+
+  using HT=std::unordered_map<uint64_t,std::vector<uint64_t>>;
+
+  static constexpr size_t PartitionSize = 1 << 5;
+  /// The hash tables for the join
+  HT hashTables_left[PartitionSize];
+
+  /// Columns that have to be materialized
+  std::unordered_set<SelectInfo> requestedColumns;
+  /// Left/right columns that have been requested
+  std::vector<SelectInfo> requestedColumnsLeft,requestedColumnsRight;
+
+
+  /// The entire input data of left and right
+  std::vector<uint64_t*> leftInputData,rightInputData;
+  /// The input data that has to be copied
+  std::vector<uint64_t*>copyLeftData,copyRightData;
+
+  public:
+  /// The constructor
+  ParallelHashJoin(std::unique_ptr<Operator>&& left,std::unique_ptr<Operator>&& right,PredicateInfo& pInfo)
+    :left(std::move(left)), right(std::move(right)),
+    pInfo(pInfo)
+  {}
   /// Require a column and add it to results
   bool require(SelectInfo info) override;
   /// Run

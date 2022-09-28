@@ -1,13 +1,16 @@
-#include <ConcurrentHashmap.hpp>
 #include <Operators.hpp>
 #include <ThreadPool.hpp>
+#include <LockPool.hpp>
 #include <cassert>
 #include <list>
 #include <future>
 #include <iostream>
 #include <vector>
+#include <iterator>
+#include <numeric>
 
-static ThreadPool pool;
+static ThreadPool pool_for_intraoperation(size_t(2.5*ThreadPool::GetSupportedHardwareThreads()));
+ThreadPool pool_for_interoperation(ThreadPool::GetSupportedHardwareThreads()/2);
 
 //---------------------------------------------------------------------------
 using namespace std;
@@ -86,6 +89,39 @@ void FilterScan::run()
     }
     if (pass)
       copy2Result(i);
+  }
+}
+//---------------------------------------------------------------------------
+void ParallelFilterScan::run() {
+  using RecordIndex = std::vector<uint64_t>;
+  std::vector<std::future<RecordIndex>> jobs;
+  const auto tuple_size = relation.columns.size() * sizeof(uint64_t);
+  const auto tuples_per_job = L2CacheLineSize / tuple_size;
+  const auto job_size = (relation.size + tuples_per_job - 1) / tuples_per_job;
+
+  for (int i = 0; i < job_size; ++i) {
+    auto s = i * tuples_per_job, e = min<size_t>((i + 1) * tuples_per_job, relation.size);
+    if (s >= e)
+      break;
+    jobs.emplace_back(pool_for_intraoperation.EnqueueJob([this, s, e] {
+      RecordIndex result;
+      result.reserve(e-s);
+      for (uint64_t i = s; i < e; ++i) {
+        bool pass = true;
+        for (auto &f : filters) {
+          pass &= applyFilter(i, f);
+        }
+        if (pass) {
+          result.emplace_back(i);
+        }
+      }
+      return result;
+    }));
+  }
+  for(auto&& job : jobs){
+    for(auto i : job.get()){
+      copy2Result(i);
+    }
   }
 }
 //---------------------------------------------------------------------------
@@ -247,7 +283,7 @@ void Checksum::run()
   }
 }
 //---------------------------------------------------------------------------
-bool ParallelJoin::require(SelectInfo info)
+bool ParallelHashJoin::require(SelectInfo info)
   // Require a column and add it to results
 {
   if (requestedColumns.count(info)==0) {
@@ -268,14 +304,35 @@ bool ParallelJoin::require(SelectInfo info)
   return true;
 }
 //---------------------------------------------------------------------------
-void ParallelJoin::run()
+void ParallelHashJoin::run()
   // Run
 {
   left->require(pInfo.left);
   right->require(pInfo.right);
 
-  left->run();
-  right->run();
+  // Asynchronusly execute Scan Operations
+  if(dynamic_cast<Scan*>(left.get())){
+    auto left_job = pool_for_interoperation.EnqueueJob([this] { left->run(); });
+    if (dynamic_cast<Scan *>(right.get())) {
+      auto right_job =
+          pool_for_interoperation.EnqueueJob([this] { right->run(); });
+      left_job.wait();
+      right_job.wait();
+    } else {
+      right->run();
+      left_job.wait();
+    }
+  }else{
+    if (dynamic_cast<Scan *>(right.get())) {
+      auto right_job =
+          pool_for_interoperation.EnqueueJob([this] { right->run(); });
+      left->run();
+      right_job.wait();
+    } else {
+      left->run();
+      right->run();
+    }
+  }
 
   // Use smaller input for build
   if (left->resultSize>right->resultSize) {
@@ -301,111 +358,336 @@ void ParallelJoin::run()
   auto leftColId=left->resolve(pInfo.left);
   auto rightColId=right->resolve(pInfo.right);
 
-  const auto job_count = pool.GetNumThreads();
-
-  using JoinRecords = std::vector<std::vector<uint64_t>>;
-  // std::vector<HT> hashTables(job_count);
-  // concurrent_hashmap<uint64_t, uint64_t> concurrentHashTable(job_count, left->resultSize);
-  // {
-  //   auto leftKeyColumn=leftInputData[leftColId];
-  //   const auto chunk_size = (left->resultSize + job_count - 1) / job_count;
-  //   std::vector<future<void>> population_tasks;
-  //   for (size_t i = 0; i < job_count; ++i) {
-  //     const auto start = i * chunk_size;
-  //     const auto end = std::min(start + chunk_size, left->resultSize);
-  //     if(start >= end) continue;
-
-  //     population_tasks.emplace_back(pool.EnqueueJob([leftKeyColumn, &concurrentHashTable](size_t begin, size_t end){
-  //       for (auto i=begin;i!=end;++i) {
-  //         concurrentHashTable.insert(leftKeyColumn[i], i);
-  //       }
-  //     }, start, end));
-  //   }
-
-  //   for (auto& population_task : population_tasks) {
-  //     population_task.wait();
-  //   }
-
-  //   population_tasks.clear();
-
-  //   for (size_t i = 0; i < job_count; ++i) {
-  //     population_tasks.emplace_back(
-  //         pool.EnqueueJob([i, &hashTables, &concurrentList = concurrentHashTable.get_bucket(i)]{
-  //         hashTables[i].reserve(concurrentList.size());
-  //         for (auto iter = concurrentList.get_head(); iter; iter = iter->next) {
-  //           hashTables[i].emplace(iter->data.first, iter->data.second);
-  //         }
-  //       })
-  //     );
-  //   }
-
-  //   for (auto& population_task : population_tasks) {
-  //     population_task.wait();
-  //   }
-  // }
-
-  // Build phase (Sequential)
   auto leftKeyColumn=leftInputData[leftColId];
-  hashTable.reserve(left->resultSize*2);
-  for (uint64_t i=0,limit=i+left->resultSize;i!=limit;++i) {
-    hashTable.emplace(leftKeyColumn[i],i);
-  }
-
-  vector<future<JoinRecords>> tasks;
-
-  const auto chunk_size = (right->resultSize + job_count - 1) / job_count;
-  tasks.reserve(job_count);
-
-  // Probe phase
   auto rightKeyColumn=rightInputData[rightColId];
-  for (size_t job_id = 0; job_id < job_count; ++job_id) {
-    uint64_t l = job_id * chunk_size, r = min((job_id+1) * chunk_size, right->resultSize);
-    if(l >= r) continue;
 
-    tasks.emplace_back(
-        pool.EnqueueJob([rightKeyColumn,
-                         &copyLeftData = this->copyLeftData,
-                         &copyRightData = this->copyRightData,
-                         &_tmpResults = this->tmpResults,
-                         &hashTable = this->hashTable]
-                        //  &hashTables,
-                        //  &concurrentHashTable]
-                        (uint64_t l, uint64_t r) {
-          auto tmpResults = JoinRecords(_tmpResults.size());
+  constexpr size_t JoinPairSize = sizeof(uint64_t) * 2;
+  constexpr size_t BlockSize = L2CacheLineSize / JoinPairSize;
 
-          for (uint64_t i = l; i != r; ++i) {
-            auto rightKey = rightKeyColumn[i];
-            auto range = hashTable.equal_range(rightKey);
-            // auto range = hashTables[concurrentHashTable.hash(rightKey) % concurrentHashTable.get_bucket_size()].equal_range(rightKey);
+  using JoinPairs = std::vector<std::pair<uint64_t, uint64_t>>;
 
-            for (auto iter = range.first; iter != range.second; ++iter) {
-              const auto &leftId = iter->second;
-              const auto &rightId = i;
+  // 1. Partition Phase
+  std::vector<std::vector<size_t>> left_prefix_sums(PartitionSize);
+  std::vector<std::vector<size_t>> right_prefix_sums(PartitionSize);
+  std::vector<size_t> left_partial_sum(PartitionSize + 1), right_partial_sum(PartitionSize + 1);
+  JoinPairs left_partition(left->resultSize), right_partition(right->resultSize);
+  {
+    // 1-1. Compute offsets
+    const auto left_partition_job_size = (left->resultSize + BlockSize - 1) / BlockSize;
+    const auto right_partition_job_size = (right->resultSize + BlockSize - 1) / BlockSize;
+    std::vector<std::future<std::vector<uint64_t>>> compute_offset_jobs;
+    compute_offset_jobs.reserve(left_partition_job_size + right_partition_job_size);
 
-              unsigned relColId = 0;
-              for (unsigned cId = 0; cId < copyLeftData.size(); ++cId)
-                tmpResults[relColId++].emplace_back(copyLeftData[cId][leftId]);
-
-              for (unsigned cId = 0; cId < copyRightData.size(); ++cId)
-                tmpResults[relColId++].emplace_back(copyRightData[cId][rightId]);
-            }
-          }
-
-          return tmpResults;
-        }, l, r));
-  }
-
-  for (auto& task : tasks) {
-    task.wait();
-    auto&& temp = task.get();
+    // Left Partitioning
+    for(auto& prefix_sum : left_prefix_sums){
+      prefix_sum.reserve(left_partition_job_size + 1);
+      prefix_sum.emplace_back(0);
+    }
     
-    int column_idx = 0;
-    for(auto& column : tmpResults){
-      column.insert(column.end(), std::make_move_iterator(temp[column_idx].begin()), std::make_move_iterator(temp[column_idx].end()));
-      ++column_idx;
+    // Distribute jobs per cache line
+    for (size_t i = 0; i < left_partition_job_size; ++i){
+      size_t s = i * BlockSize, e = std::min<size_t>((i+1) * BlockSize, left->resultSize);
+      compute_offset_jobs.emplace_back(pool_for_interoperation.EnqueueJob([s, e, leftKeyColumn]{
+        std::vector<uint64_t> histogram(PartitionSize);
+        for(size_t i = s; i < e; ++i){
+          ++histogram[leftKeyColumn[i] % PartitionSize];
+        }
+        return histogram;
+      }));
+    }
+
+    // Right Partitioning
+    for(auto& prefix_sum : right_prefix_sums){
+      prefix_sum.reserve(right_partition_job_size + 1);
+      prefix_sum.emplace_back(0);
+    }
+
+    // Distribute jobs per cache line
+    for (size_t i = 0; i < right_partition_job_size; ++i){
+      size_t s = i * BlockSize, e = std::min<size_t>((i+1) * BlockSize, right->resultSize);
+      compute_offset_jobs.emplace_back(pool_for_interoperation.EnqueueJob([s, e, rightKeyColumn]{
+        std::vector<uint64_t> histogram(PartitionSize);
+        for(size_t i = s; i < e; ++i){
+          ++histogram[rightKeyColumn[i] % PartitionSize];
+        }
+        return histogram;
+      }));
+    }
+
+    // Wait for partitioned histograms
+    
+    // Merge left histograms
+    for(size_t i = 0; i < left_partition_job_size; ++i){
+      auto histogram = compute_offset_jobs[i].get();
+      for(size_t j = 0; j < PartitionSize; ++j){
+        left_prefix_sums[j].emplace_back(left_prefix_sums[j].back() + histogram[j]);
+      }
+    }
+
+    // Calculate left partial sum
+    for(size_t j = 0; j < PartitionSize; ++j){
+      left_partial_sum[j + 1] = left_partial_sum[j] + left_prefix_sums[j].back();  
+    }
+
+    // Merge right histograms
+    for(size_t i = 0; i < right_partition_job_size; ++i){
+      auto histogram = compute_offset_jobs[i + left_partition_job_size].get();
+      for(size_t j = 0; j < PartitionSize; ++j){
+        right_prefix_sums[j].emplace_back(right_prefix_sums[j].back() + histogram[j]);
+      }
+    }
+
+    // Calculate right partial sum
+    for(size_t j = 0; j < PartitionSize; ++j){
+      right_partial_sum[j + 1] = right_partial_sum[j] + right_prefix_sums[j].back();
+    }
+
+    // 1-2. Construct partitions
+    std::vector<std::future<void>> partition_jobs;
+    partition_jobs.reserve(left_partition_job_size + right_partition_job_size);
+
+    for(size_t i = 0; i < left_partition_job_size; ++i){
+      size_t s = i * BlockSize, e = std::min<size_t>((i+1) * BlockSize, left->resultSize);
+      partition_jobs.emplace_back(pool_for_interoperation.EnqueueJob([this, job_idx = i, s, e, leftKeyColumn, &left_partition, &left_partial_sum, &left_prefix_sums]() {
+        // Fill the left partition
+        for(size_t i = s; i < e; ++i){
+          auto key = leftKeyColumn[i];
+          auto partition_id = key % PartitionSize;
+          const size_t start_offset = left_partial_sum[partition_id];
+          assert(start_offset + left_prefix_sums[partition_id][job_idx] < left->resultSize);
+          left_partition[start_offset + left_prefix_sums[partition_id][job_idx]++] = {key, i};
+        }
+      }));
+    }
+
+    for(size_t i = 0; i < right_partition_job_size; ++i){
+      size_t s = i * BlockSize, e = std::min<size_t>((i+1) * BlockSize, right->resultSize);
+      partition_jobs.emplace_back(pool_for_interoperation.EnqueueJob([this, job_idx = i, s, e, rightKeyColumn, &right_partition, &right_partial_sum, &right_prefix_sums]() {
+        // Fill the right partition
+        for(size_t i = s; i < e; ++i){
+          auto key = rightKeyColumn[i];
+          auto partition_id = key % PartitionSize;
+          const size_t start_offset = right_partial_sum[partition_id];
+          assert(start_offset + right_prefix_sums[partition_id][job_idx] < right->resultSize);
+          right_partition[start_offset + right_prefix_sums[partition_id][job_idx]++] = {key, i};
+        }
+      }));
+    }
+
+    for(auto&& job : partition_jobs){
+      job.wait();
     }
   }
-  resultSize = tmpResults.size() ? tmpResults[0].size() : 0;
+
+  // Build and Probe Phase
+  std::vector<size_t> join_start_idx(PartitionSize + 1);
+  {
+    std::vector<std::future<size_t>> build_probe_jobs;
+    build_probe_jobs.reserve(PartitionSize);
+
+    for(size_t i = 0; i < PartitionSize; ++i){
+      // Build Phase
+      build_probe_jobs.emplace_back(pool_for_interoperation.EnqueueJob(
+          [this, partition_id = i, &left_partition, &right_partition,
+           &left_partial_sum, &right_partial_sum] {
+            auto s = left_partial_sum[partition_id];
+            auto e = left_partial_sum[partition_id + 1];
+
+            // Build a hashtable of left partitions
+            hashTables_left[partition_id].reserve(2 * (e - s));
+            for (size_t i = s; i < e; ++i) {
+              hashTables_left[partition_id][left_partition[i].first / PartitionSize].emplace_back(left_partition[i].second);
+            }
+
+            // Probe Phase
+            s = right_partial_sum[partition_id];
+            e = right_partial_sum[partition_id + 1];
+
+            // Count the number of join results of this partition
+            size_t result_size = 0;
+            for (size_t i = s; i < e; ++i) {
+              auto key = right_partition[i].first;
+              // if(auto it = hashTables_left[partition_id].find(key / PartitionSize); it != hashTables_left[partition_id].end()){
+              if(hashTables_left[partition_id].count(key / PartitionSize)){
+                // result_size += it->second.size();
+                result_size += hashTables_left[partition_id][key / PartitionSize].size();
+              }
+            }
+
+            return result_size;
+          }));
+    }
+
+    // Make a partial index sum for each joined partition
+    size_t idx = 0;
+    for(auto&& job : build_probe_jobs){
+      auto num_tuples_in_partition = job.get();
+      join_start_idx[idx+1] = join_start_idx[idx] + num_tuples_in_partition;
+      ++idx;
+    }
+
+    resultSize = join_start_idx[PartitionSize];
+  }
+
+  // Add data phase
+  {
+    std::vector<std::future<void>> add_data_jobs;
+    add_data_jobs.reserve(PartitionSize);
+
+    // Preoccupy the memory
+    for(auto& column : tmpResults)
+      column.reserve(resultSize);
+
+    // Add data
+    for(size_t i = 0; i < PartitionSize; ++i){
+      add_data_jobs.emplace_back(pool_for_intraoperation.EnqueueJob(
+          [this, partition_id = i, start_idx = join_start_idx[i],
+           &right_partition, &right_partial_sum]() mutable {
+            
+            auto s = right_partial_sum[partition_id];
+            auto e = right_partial_sum[partition_id + 1];
+
+            const size_t num_left_cols = copyLeftData.size();
+            const size_t num_right_cols = copyRightData.size();
+            size_t row_idx = start_idx;
+
+            for (size_t i = s; i < e; ++i) {
+              auto key = right_partition[i].first;
+              auto right_idx = right_partition[i].second;
+              auto range = hashTables_left[partition_id].find(key / PartitionSize);
+              if(range != hashTables_left[partition_id].end()){
+                for (auto left_idx : range->second) {
+                  // left_idx, right_idx 페어추가
+                  for (size_t j = 0; j < num_left_cols; ++j) {
+                    tmpResults[j][row_idx] = copyLeftData[j][left_idx];
+                  }
+                  for (size_t j = 0; j < num_right_cols; ++j) {
+                    tmpResults[j + num_left_cols][row_idx] = copyRightData[j][right_idx];
+                  }
+                  ++row_idx;
+                }
+              }
+            }
+          }));
+    }
+
+    for (auto&& job : add_data_jobs)
+      job.wait();
+  }
+}
+//---------------------------------------------------------------------------
+bool ParallelSortMergeJoin::require(SelectInfo info){
+  if (requestedColumns.count(info)==0) {
+    bool success=false;
+    if(left->require(info)) {
+      requestedColumnsLeft.emplace_back(info);
+      success=true;
+    } else if (right->require(info)) {
+      success=true;
+      requestedColumnsRight.emplace_back(info);
+    }
+    if (!success)
+      return false;
+
+    tmpResults.emplace_back();
+    requestedColumns.emplace(info);
+  }
+  return true;
+}
+//---------------------------------------------------------------------------
+void ParallelSortMergeJoin::copy2Result(uint64_t leftId,uint64_t rightId){
+  unsigned relColId=0;
+  for (unsigned cId=0;cId<copyLeftData.size();++cId)
+    tmpResults[relColId++].push_back(copyLeftData[cId][leftId]);
+
+  for (unsigned cId=0;cId<copyRightData.size();++cId)
+    tmpResults[relColId++].push_back(copyRightData[cId][rightId]);
+  ++resultSize;
+}
+//---------------------------------------------------------------------------
+void ParallelSortMergeJoin::run(){
+  left->require(pInfo.left);
+  right->require(pInfo.right);
+
+  // Asynchronusly execute Scan Operations
+  if(dynamic_cast<Scan*>(left.get())){
+    auto left_job = pool_for_interoperation.EnqueueJob([this] { left->run(); });
+    if (dynamic_cast<Scan *>(right.get())) {
+      auto right_job =
+          pool_for_interoperation.EnqueueJob([this] { right->run(); });
+      left_job.wait();
+      right_job.wait();
+    } else {
+      right->run();
+      left_job.wait();
+    }
+  }else{
+    if (dynamic_cast<Scan *>(right.get())) {
+      auto right_job =
+          pool_for_interoperation.EnqueueJob([this] { right->run(); });
+      left->run();
+      right_job.wait();
+    } else {
+      left->run();
+      right->run();
+    }
+  }
+
+  // Use smaller input for build
+  if (left->resultSize>right->resultSize) {
+    swap(left,right);
+    swap(pInfo.left,pInfo.right);
+    swap(requestedColumnsLeft,requestedColumnsRight);
+  }
+
+  auto leftInputData=left->getResults();
+  auto rightInputData=right->getResults();
+
+  // Resolve the input columns
+  unsigned resColId=0;
+  for (auto& info : requestedColumnsLeft) {
+    copyLeftData.push_back(leftInputData[left->resolve(info)]);
+    select2ResultColId[info]=resColId++;
+  }
+  for (auto& info : requestedColumnsRight) {
+    copyRightData.push_back(rightInputData[right->resolve(info)]);
+    select2ResultColId[info]=resColId++;
+  }
+
+  auto leftColId=left->resolve(pInfo.left);
+  auto rightColId=right->resolve(pInfo.right);
+
+  using KeyIdxPair = std::pair<uint64_t, size_t>;
+  std::vector<KeyIdxPair> leftColKeyIdxPairs;
+  leftColKeyIdxPairs.reserve(left->resultSize);
+  for(size_t i=0;i<left->resultSize;++i)
+    leftColKeyIdxPairs.emplace_back(leftInputData[leftColId][i],i);
+  std::sort(leftColKeyIdxPairs.begin(), leftColKeyIdxPairs.end());
+
+  std::vector<KeyIdxPair> rightColKeyIdxPairs;
+  rightColKeyIdxPairs.reserve(right->resultSize);
+  for(size_t i=0;i<right->resultSize;++i)
+    rightColKeyIdxPairs.emplace_back(rightInputData[rightColId][i],i);
+  std::sort(rightColKeyIdxPairs.begin(), rightColKeyIdxPairs.end());
+
+  auto cmp = [](const KeyIdxPair& a, const KeyIdxPair& b){ return a.first < b.first; };
+  
+  auto leftColKeyIdxPairsIter = leftColKeyIdxPairs.begin();
+  while(leftColKeyIdxPairsIter != leftColKeyIdxPairs.end()){
+    const auto joinKey = leftColKeyIdxPairsIter->first;
+    auto [left_s, left_e] = std::equal_range(leftColKeyIdxPairs.begin(), leftColKeyIdxPairs.end(), KeyIdxPair{joinKey, 0}, cmp);
+    auto [right_s, right_e] = std::equal_range(rightColKeyIdxPairs.begin(), rightColKeyIdxPairs.end(), KeyIdxPair{joinKey, 0}, cmp);
+
+    while(left_s != left_e){
+      while(right_s != right_e){
+        copy2Result(left_s->second, right_s->second);
+        ++right_s;
+      }
+      ++left_s;
+    }
+
+    leftColKeyIdxPairsIter = left_e;
+  }
 }
 //---------------------------------------------------------------------------
 void ParallelChecksum::run()
@@ -415,48 +697,56 @@ void ParallelChecksum::run()
     input->require(sInfo);
   }
   input->run();
+  
   auto results=input->getResults();
+  checkSums.reserve(colInfo.size());
 
-  if(colInfo.size() * input->resultSize < 10000){
+  const size_t datasize_per_column = input->resultSize * sizeof(uint64_t);
+  const size_t total_size = datasize_per_column * colInfo.size();
+
+  if(total_size <= L2CacheLineSize){
+    // just calculate checksums sequentially
     for (auto& sInfo : colInfo) {
       auto colId=input->resolve(sInfo);
-      auto resultCol=results[colId];
-      uint64_t sum=0;
-      resultSize=input->resultSize;
-      for (auto iter=resultCol,limit=iter+input->resultSize;iter!=limit;++iter)
-        sum+=*iter;
-      checkSums.push_back(sum);
+      auto& data=results[colId];
+      uint64_t checksum = std::accumulate(data, data+input->resultSize, uint64_t(0));
+      checkSums.push_back(checksum);
     }
   }else{
+    // calculate checksums in parallel
+    const auto chunk_size = 2 * L2CacheLineSize / sizeof(uint64_t);
+    const auto job_size = (input->resultSize + chunk_size - 1) / chunk_size;
+
     std::vector<std::future<uint64_t>> tasks;
-    tasks.resize(colInfo.size());
-    
-    size_t col_idx;
+    tasks.reserve(colInfo.size() * job_size);
 
-    for (col_idx = 0;col_idx < colInfo.size(); ++col_idx) {
-      auto& sInfo = colInfo[col_idx];
+    for (auto& sInfo : colInfo) {
       auto colId=input->resolve(sInfo);
-      auto resultCol=results[colId];
+      auto data=results[colId];
 
-      tasks[col_idx] = pool.EnqueueJob(
-          [](uint64_t *begin, uint64_t *end) {
-            uint64_t sum = 0;
-            for (auto iter = begin; iter != end; ++iter)
-              sum += *iter;
-            return sum;
-          },
-          resultCol, &resultCol[input->resultSize]);
+      for(size_t i = 0; i < job_size; ++i){
+        auto s = data + i * chunk_size, e = std::min(data + (i + 1) * chunk_size, data + input->resultSize);
+        tasks.emplace_back(pool_for_intraoperation.EnqueueJob([s, e, this]() -> uint64_t {
+          return std::accumulate(s, e, uint64_t(0));
+        }));
+      }
     }
 
-    resultSize=input->resultSize;
-    for (col_idx = 0; col_idx < colInfo.size(); ++col_idx) {
-      uint64_t sum = 0;
-      
-      tasks[col_idx].wait();
-      sum += tasks[col_idx].get();
-      checkSums.push_back(sum);
+    // Wait for all checksums to be calculated
+    uint64_t checksum;
+    size_t column_cnt = 0;
+    for (auto& sInfo : colInfo) {
+      checksum = 0;
+      for(size_t i = 0; i < job_size; ++i){
+        checksum += tasks[column_cnt * job_size + i].get();
+      }
+      checkSums.push_back(checksum); // store checksum
+      ++column_cnt;
     }
   }
+
+  // Store the final result size
+  resultSize=input->resultSize;
 }
 //---------------------------------------------------------------------------
 void ParallelSelfJoin::copy2Result(uint64_t id)
@@ -509,14 +799,14 @@ void ParallelSelfJoin::run()
     using JoinRecords = std::vector<std::vector<uint64_t>>;
     using Records_Size_Pair = pair<JoinRecords, size_t>;
     std::vector<std::future<Records_Size_Pair>> tasks;
-    const auto job_count = pool.GetNumThreads();
+    const auto job_count = pool_for_intraoperation.GetNumThreads();
     const auto chunk_size = (input->resultSize + job_count - 1) / job_count;
 
     tasks.reserve(job_count);
     for(size_t i = 0; i < job_count; ++i){
       const auto begin = i * chunk_size,
                  end = min((i + 1) * chunk_size, input->resultSize);
-      tasks.emplace_back(pool.EnqueueJob(
+      tasks.emplace_back(pool_for_intraoperation.EnqueueJob(
           [leftCol, rightCol, &copyData = this->copyData, &_tmpResults = this->tmpResults](size_t begin, size_t end) {
             JoinRecords tmpResults = _tmpResults;
 
@@ -547,7 +837,8 @@ void ParallelSelfJoin::run()
     for(auto& column : tmpResults){
       column.reserve(resultSize);
       for(auto& result : results){
-        column.insert(column.end(), std::make_move_iterator(result.first[col_idx].begin()), std::make_move_iterator(result.first[col_idx].end()));
+        // column.insert(column.end(), std::make_move_iterator(result.first[col_idx].begin()), std::make_move_iterator(result.first[col_idx].end()));
+        column.insert(column.end(), result.first[col_idx].begin(), result.first[col_idx].end());
       }
       ++col_idx;
     }

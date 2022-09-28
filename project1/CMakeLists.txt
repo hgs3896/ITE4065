@@ -21,7 +21,7 @@ target_include_directories(database PUBLIC
 target_link_libraries(
     database
     PUBLIC pthread
-    PUBLIC "/usr/local/lib/libjemalloc${CMAKE_STATIC_LIBRARY_SUFFIX}"
+    PUBLIC "/usr/local/lib/libjemalloc${CMAKE_SHARED_LIBRARY_SUFFIX}"
 )
 
 OPTION(FORCE_TESTS "Build tests, regardless of build type." ON)

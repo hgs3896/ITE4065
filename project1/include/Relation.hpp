@@ -33,6 +33,10 @@ class Relation {
   Relation(const Relation& other)=delete;
   /// Move constructor
   Relation(Relation&& other)=default;
+  /// Delete copy assignment
+  Relation& operator=(const Relation& other)=delete;
+  /// Move assignment
+  Relation& operator=(Relation&& other)=default;
   /// The destructor
   ~Relation();
 };
