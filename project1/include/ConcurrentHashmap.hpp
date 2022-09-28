@@ -92,7 +92,7 @@ public:
                 std::memory_order_release,std::memory_order_relaxed));
         
         // Increase the size
-        _size.fetch_add(1);
+        _size.fetch_add(1, std::memory_order_release);
     }
 
     const node<T>* get_head() const{
