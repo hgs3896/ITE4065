@@ -31,16 +31,14 @@ template<typename T>
 class WaitFreeAtomicSnapshot {
 private:
     std::vector<std::shared_ptr<WaitFreeAtomicSnapshotItem<T>>> items;
-    // std::vector<std::atomic<WaitFreeAtomicSnapshotItem<T>*>> items;
     std::vector<size_t> num_updates;
 
     std::shared_ptr<Snapshot<T>> collect() const{
         std::shared_ptr<Snapshot<T>> snap = std::make_shared<Snapshot<T>>();
-        snap->items.reserve(this->items.size());
+        snap->items.resize(this->items.size());
         
-        for(const auto& item : this->items){
-            snap->items.push_back(item);
-            // snap->items.push_back(std::make_shared<WaitFreeAtomicSnapshotItem<T>>(*item));
+        for(size_t i = 0; i < this->items.size(); i++){
+            snap->items[i] = std::atomic_load(&this->items[i]);
         }
         return snap;
     }
@@ -64,12 +62,6 @@ public:
                 std::swap(to_be_killed, items[i]->last);
                 items[i]->last = std::move(to_be_killed->items[i]->last);
             }
-            // auto lastSnap = items[i].load()->last;
-            // while(lastSnap != nullptr){
-            //     std::shared_ptr<Snapshot<T>> to_be_killed;
-            //     std::swap(to_be_killed, lastSnap);
-            //     lastSnap = std::move(to_be_killed->items[i]->last);
-            // }
         }
     }
 
@@ -81,23 +73,17 @@ public:
         auto item = std::make_shared<WaitFreeAtomicSnapshotItem<T>>(
             new_data, collect->items[tid]->version + 1, collect
         );
-        // auto item = new WaitFreeAtomicSnapshotItem<T>(
-        //     new_data, collect->items[tid]->version + 1, collect
-        // );
         
-        // Atomic Update
-        this->items[tid] = std::move(item);
-        // this->items[tid].exchange(item);
-        // delete item;
-
-        // this->items[tid]->last = nullptr;
+        // Atomic Update the WaitFreeAtomicSnapshotItem
+        std::atomic_store(&this->items[tid], std::move(item));
     
         // Increment update count
         ++num_updates[tid];
     }
 
     std::shared_ptr<Snapshot<T>> scan() const {
-        std::vector<bool> moved(items.size());
+        const size_t item_size = items.size();
+        std::vector<bool> moved(item_size);
         size_t i;
 
         using CollectType = decltype(collect());
@@ -106,7 +92,7 @@ public:
 
         while(true){
             new_collect = collect();
-            for(i = 0;i < items.size();i++){
+            for(i = 0;i < item_size;i++){
                 if(old_collect->items[i]->version != new_collect->items[i]->version){
                     if(moved[i]) {
                         return new_collect->items[i]->last;
@@ -116,9 +102,10 @@ public:
                     }
                 }
             }
-            // old_collect == new_collect
-            if(i == items.size())
+
+            if(i == item_size) // old_collect == new_collect (able to get an atomic snapshot)
                 break;
+
             old_collect = std::move(new_collect);
         }
         return new_collect;
