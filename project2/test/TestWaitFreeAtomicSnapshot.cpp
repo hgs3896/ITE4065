@@ -47,13 +47,13 @@ namespace {
                     else
                         snapshot.update(tid, old_collect->items[0]->data + 1);
                     auto collect = snapshot.scan();
-                    EXPECT_LE(collect->items[0]->data, collect->items[1]->data);
-                    // for(auto i = 0; i < N; ++i){
-                        // if(i == tid)
-                        //     EXPECT_TRUE(old_collect->items[i]->version + 1 == collect->items[i]->version);
-                        // else
-                        //     EXPECT_TRUE(old_collect->items[i]->version <= collect->items[i]->version);
-                    // }
+                    
+                    for(auto i = 0; i < N; ++i){
+                        if(i == tid)
+                            EXPECT_TRUE(old_collect->items[i]->version + 1 == collect->items[i]->version);
+                        else
+                            EXPECT_TRUE(old_collect->items[i]->version <= collect->items[i]->version);
+                    }
 
                     // if(tid==1){
                     //     std::cout << "Old: " << old_collect << std::endl;
