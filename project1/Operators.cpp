@@ -1,6 +1,5 @@
 #include <Operators.hpp>
 #include <ThreadPool.hpp>
-#include <LockPool.hpp>
 #include <cassert>
 #include <list>
 #include <future>
