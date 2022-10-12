@@ -1,8 +1,8 @@
 #pragma once
-#include <vector>
-#include <memory>
-#include <iostream>
 #include <atomic>
+#include <iostream>
+#include <memory>
+#include <vector>
 
 template<typename T>
 struct Snapshot;
@@ -59,14 +59,12 @@ public:
     void update(size_t tid, T new_data){
         // Take a scan
         auto collect = scan();
-        assert(collect);
 
         // Build a new Wait-Free Atomic Snapshot Item
         auto item = std::make_shared<WaitFreeAtomicSnapshotItem<T>>();
         item->data = new_data;
         item->version = collect->items[tid]->version + 1;
         item->last = std::move(collect);
-        assert(item->last);
         
         // Atomic Update the WaitFreeAtomicSnapshotItem
         std::atomic_store(&this->items[tid], std::move(item));
@@ -76,18 +74,17 @@ public:
     }
 
     std::unique_ptr<Snapshot<T>> scan() const {
+        using CollectType = decltype(collect());
+        CollectType new_collect;
+        CollectType old_collect;
+        
         const size_t item_size = items.size();
         std::vector<bool> moved(item_size);
         size_t i;
-
-        using CollectType = decltype(collect());
-        CollectType old_collect = collect();
-        assert(old_collect);
-        CollectType new_collect;
-
+        
+        old_collect = collect();
         while(true){
             new_collect = collect();
-            assert(new_collect);
             for(i = 0;i < item_size;i++){
                 if(old_collect->items[i]->version != new_collect->items[i]->version){
                     if(moved[i]) {
@@ -104,7 +101,6 @@ public:
 
             old_collect = std::move(new_collect);
         }
-        assert(new_collect);
         return new_collect;
     }
 

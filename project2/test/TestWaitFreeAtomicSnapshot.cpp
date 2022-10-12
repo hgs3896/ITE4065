@@ -22,7 +22,6 @@ namespace {
             snapshot.update(0, v);
             auto collect = snapshot.scan();
             ASSERT_EQ(collect->items[0]->data, v);
-
             ++v;
         }
 
@@ -48,17 +47,12 @@ namespace {
                         snapshot.update(tid, old_collect->items[0]->data + 1);
                     auto collect = snapshot.scan();
                     
-                    for(auto i = 0; i < N; ++i){
+                    for(size_t i = 0; i < N; ++i){
                         if(i == tid)
                             EXPECT_TRUE(old_collect->items[i]->version + 1 == collect->items[i]->version);
                         else
                             EXPECT_TRUE(old_collect->items[i]->version <= collect->items[i]->version);
                     }
-
-                    // if(tid==1){
-                    //     std::cout << "Old: " << old_collect << std::endl;
-                    //     std::cout << "New: " << collect << std::endl;
-                    // }
 
                     old_collect = std::move(collect);
                 }
@@ -69,9 +63,13 @@ namespace {
             job.wait();
         }
 
+        size_t total_updates = 0;
         for(size_t tid = 0; tid < N; ++tid){
-            std::cout << "ScanTest02: " << snapshot.getNumberOfUpdates(tid) << std::endl;
+            auto num_updates = snapshot.getNumberOfUpdates(tid);
+            total_updates += num_updates;
+            std::cout << "ScanTest02[" << std::right << std::setw(2) << tid << "]: " << num_updates << std::endl;
         }
+        std::cout << "ScanTest02" << ": " << total_updates << std::endl;
     }
 
     TEST_F(WaitFreeAtomicSnapshotTest, ScanTest04) {
@@ -90,7 +88,7 @@ namespace {
                 while(std::chrono::high_resolution_clock::now() - start < std::chrono::seconds(secs)){
                     snapshot.update(tid, v);
                     auto collect = snapshot.scan();
-                    for(auto i = 0; i < N; ++i){
+                    for(size_t i = 0; i < N; ++i){
                         if(i == tid)
                             EXPECT_TRUE(old_collect->items[i]->version + 1 == collect->items[i]->version);
                         else
@@ -107,9 +105,13 @@ namespace {
             job.wait();
         }
 
+        size_t total_updates = 0;
         for(size_t tid = 0; tid < N; ++tid){
-            std::cout << "ScanTest04: " << snapshot.getNumberOfUpdates(tid) << std::endl;
+            auto num_updates = snapshot.getNumberOfUpdates(tid);
+            total_updates += num_updates;
+            std::cout << "ScanTest04[" << std::right << std::setw(2) << tid << "]: " << num_updates << std::endl;
         }
+        std::cout << "ScanTest04" << ": " << total_updates << std::endl;
     }
 
     TEST_F(WaitFreeAtomicSnapshotTest, ScanTest08) {
@@ -128,17 +130,12 @@ namespace {
                 while(std::chrono::high_resolution_clock::now() - start < std::chrono::seconds(secs)){
                     snapshot.update(tid, v);
                     auto collect = snapshot.scan();
-                    for(auto i = 0; i < N; ++i){
+                    for(size_t i = 0; i < N; ++i){
                         if(i == tid)
                             EXPECT_TRUE(old_collect->items[i]->version + 1 == collect->items[i]->version);
                         else
                             EXPECT_TRUE(old_collect->items[i]->version <= collect->items[i]->version);
                     }
-                    
-                    // if(tid==0){
-                    //     std::cout << "Old: " << old_collect << std::endl;
-                    //     std::cout << "New: " << collect << std::endl;
-                    // }
 
                     old_collect = std::move(collect);
                     ++v;
@@ -150,9 +147,13 @@ namespace {
             job.wait();
         }
 
+        size_t total_updates = 0;
         for(size_t tid = 0; tid < N; ++tid){
-            std::cout << "ScanTest08: " << snapshot.getNumberOfUpdates(tid) << std::endl;
+            auto num_updates = snapshot.getNumberOfUpdates(tid);
+            total_updates += num_updates;
+            std::cout << "ScanTest08[" << std::right << std::setw(2) << tid << "]: " << num_updates << std::endl;
         }
+        std::cout << "ScanTest08" << ": " << total_updates << std::endl;
     }
 
     TEST_F(WaitFreeAtomicSnapshotTest, ScanTest16) {
@@ -171,7 +172,7 @@ namespace {
                 while(std::chrono::high_resolution_clock::now() - start < std::chrono::seconds(secs)){
                     snapshot.update(tid, v);
                     auto collect = snapshot.scan();
-                    for(auto i = 0; i < N; ++i){
+                    for(size_t i = 0; i < N; ++i){
                         if(i == tid)
                             EXPECT_TRUE(old_collect->items[i]->version + 1 == collect->items[i]->version);
                         else
@@ -188,9 +189,13 @@ namespace {
             job.wait();
         }
 
+        size_t total_updates = 0;
         for(size_t tid = 0; tid < N; ++tid){
-            std::cout << "ScanTest16: " << snapshot.getNumberOfUpdates(tid) << std::endl;
+            auto num_updates = snapshot.getNumberOfUpdates(tid);
+            total_updates += num_updates;
+            std::cout << "ScanTest16[" << std::right << std::setw(2) << tid << "]: " << num_updates << std::endl;
         }
+        std::cout << "ScanTest16" << ": " << total_updates << std::endl;
     }
 
     TEST_F(WaitFreeAtomicSnapshotTest, ScanTest32) {
@@ -198,13 +203,10 @@ namespace {
 
         WaitFreeAtomicSnapshot<uint32_t> snapshot(N);
         std::vector<std::future<void>> jobs;
-        // std::vector<std::future<std::vector<std::array<uint32_t, N>>>> jobs;
         jobs.reserve(N);
 
         for(size_t tid = 0; tid < N; ++tid){
             jobs.push_back(pool.EnqueueJob([&snapshot, tid](){
-                // std::vector<std::array<uint32_t, N>> results;
-                // results.reserve(500000);
 
                 auto start = std::chrono::high_resolution_clock::now();
                 size_t v = 0;
@@ -215,9 +217,7 @@ namespace {
                     snapshot.update(tid, v);
                     auto collect = snapshot.scan();
                     
-                    // auto& result = results.emplace_back();
-                    for(auto i = 0; i < N; ++i){
-                        // result[i] = collect->items[i]->data;
+                    for(size_t i = 0; i < N; ++i){
                         if(i == tid)
                             EXPECT_TRUE(old_collect->items[i]->version + 1 == collect->items[i]->version);
                         else
@@ -228,27 +228,19 @@ namespace {
 
                     ++v;
                 }
-
-                // return results;
             }));
         }
 
-        // std::vector<std::array<uint32_t, N>> all;
         for(auto&& job : jobs){
-            // auto result = job.get();
-            // all.insert(all.end(), result.begin(), result.end());
             job.wait();
         }
-        // std::sort(all.begin(), all.end());
-        // for(auto& x : all){
-        //     for(auto& y : x){
-        //         std::cout << y << " ";
-        //     }
-        //     std::cout << std::endl;
-        // }
         
+        size_t total_updates = 0;
         for(size_t tid = 0; tid < N; ++tid){
-            std::cout << "ScanTest32: " << snapshot.getNumberOfUpdates(tid) << std::endl;
+            auto num_updates = snapshot.getNumberOfUpdates(tid);
+            total_updates += num_updates;
+            std::cout << "ScanTest32[" << std::right << std::setw(2) << tid << "]: " << num_updates << std::endl;
         }
+        std::cout << "ScanTest32" << ": " << total_updates << std::endl;
     }
 }
