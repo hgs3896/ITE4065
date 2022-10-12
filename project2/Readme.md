@@ -96,14 +96,14 @@ public:
 
 ## Performance Analysis
 
-![Release Binary Analysis](/Users/hgs/github/ParallelProgramming/ITE4065/project2/release.png)
+![Release Binary Analysis](release.png)
 
 This figure shows the relationship between **the number of updater threads** (in x-axis) and **the total number of updates** being made during <u>1 minute</u> (in y-axis) in **release binary**.
 
 - As the graph clearly shows that the update performance is highest when the number of updaters is small. It is because the more updater threads, the harder to get a clean snapshot **due to a lot of changes being made by the updaters**.
   
 
-![Debug Binary Analysis](/Users/hgs/github/ParallelProgramming/ITE4065/project2/debug.png)
+![Debug Binary Analysis](debug.png)
 
 This figure shows the relationship between **the number of updater threads** (in x-axis) and **the total number of updates** being made during <u>1 minute</u> (in y-axis) in **debug binary**.
 
