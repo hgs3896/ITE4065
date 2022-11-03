@@ -1,0 +1,5 @@
+// The configured options and settings for Bwtree project
+#define BwtreePlus_VERSION_MAJOR @Bwtree_VERSION_MAJOR@
+#define BwtreePlus_VERSION_MINOR @Bwtree_VERSION_MINOR@
+#cmakedefine USE_BWTREE
+#cmakedefine USE_GOOGLE_TEST
