@@ -3,31 +3,39 @@
 #include <vector>
 #include <string>
 #include <iostream>
+#include <iomanip>
 
 #include "bwtree.h"
 #include "bwtree_test_util.h"
 #include "multithread_test_util.h"
 #include "timer.h"
 #include "worker_pool.h"
-#include "zipf.h"
+#include "distribution.h"
 
 int main(int argc, char *argv[]) {
+  double alpha = 1.0;
+  if(argc == 2)
+    alpha = std::stod(argv[1]);
+
 #if 0
-  double alpha = 3.0;
-  std::vector<int> count(11, 0);
-
-  rand_val(alpha);
-  for (int i = 0; i < 10000; i++) {
-    count[zipf(alpha, 10)]++;
+  // util::Distribution<util::DistributionType::Uniform> dist(0, 10);
+  util::Distribution<util::DistributionType::Zipf> dist(0, 10, alpha);
+  
+  std::vector<int> hist(10, 0);  
+  for (int i = 0; i < 100000; i++) {
+    hist[dist()]++;
   }
 
-  std::sort(count.begin(), count.end());
-
-  std::cout << "Ratio for alpha: " << alpha << std::endl;
-  for (int i = 1; i < 11; i++) {
-    std::cout << count[i] << std::endl;
+  int v = 0;
+  for (auto p : hist) {
+    std::cout << std::fixed << std::setprecision(1) << std::setw(2) << (v++)
+              << ' ' << std::string(p / 500, '*') << " " << p << '\n';
   }
-#endif
+#else
+  // Workload Distribution
+  #define USE_UNIFORM_DISTRIBUTION 0
+  #define USE_ZIPF_DISTRIBUTION    1
+
   const uint32_t num_threads_ =
     test::MultiThreadTestUtil::HardwareConcurrency() + (test::MultiThreadTestUtil::HardwareConcurrency() % 2);
 
@@ -44,12 +52,19 @@ int main(int argc, char *argv[]) {
   auto workload = [&](uint32_t id) {
     const uint32_t gcid = id + 1;
     tree->AssignGCID(gcid);
-    std::default_random_engine thread_generator(id);
-    std::uniform_int_distribution<int> uniform_dist(0, key_num - 1);
+
+    #if USE_UNIFORM_DISTRIBUTION
+    util::Distribution<util::DistributionType::Uniform> dist(0, key_num - 1);
+    #elif USE_ZIPF_DISTRIBUTION
+    util::Distribution<util::DistributionType::Zipf> dist(0, key_num - 1, alpha);
+    #endif
+
+    dist.SetSeed(id);
+
     uint32_t op_cnt = 0;
 
     while (insert_success_counter.load() < key_num) {
-      int key = uniform_dist(thread_generator);
+      int key = dist();
 
       if (tree->Insert(key, key)) insert_success_counter.fetch_add(1);
       op_cnt++;
@@ -88,6 +103,6 @@ int main(int argc, char *argv[]) {
     << "avg read latency: " << latency << " (ms) " << std::endl;
 
   delete tree;
-
+#endif
   return 0;
 }

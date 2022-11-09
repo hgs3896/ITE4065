@@ -8,6 +8,7 @@
 //=-------------------------------------------------------------------------=
 //=  History: KJC (11/16/03) - Genesis (from genexp.c)                      =
 //===========================================================================
+#pragma once
 //----- Include files -------------------------------------------------------
 #include <assert.h>             // Needed for assert() macro
 #include <stdio.h>              // Needed for printf()
@@ -22,7 +23,13 @@ namespace util {
 
 class Zipf {
   public:
-    Zipf(double alpha, int n): alpha_(alpha), n_(n), first_(true), c_(0) {}
+    Zipf(double alpha, int n): alpha_(alpha), n_(n), first_(true), c_(0), dist(), gen() {
+      pow_lookup_table.reserve(n_);
+      for (int i=0; i<n_; i++)
+        pow_lookup_table[i] = pow((double) i+1, alpha_);
+    }
+
+    ~Zipf() = default;
 
     int Generate() {
       //===========================================================================
@@ -39,7 +46,7 @@ class Zipf {
       if (first_ == true)
       {
         for (i=1; i<=n_; i++)
-          c_ = c_ + (1.0 / pow((double) i, alpha_));
+          c_ = c_ + (1.0 / pow_lookup_table[i-1]);
         c_ = 1.0 / c_;
         first_ = false;
       }
@@ -47,7 +54,7 @@ class Zipf {
       // Pull a uniform random number (0 < z < 1)
       do
       {
-        z = rand_val(0);
+           z = dist(gen);
       }
       while ((z == 0) || (z == 1));
 
@@ -55,7 +62,7 @@ class Zipf {
       sum_prob = 0;
       for (i=1; i<=n_; i++)
       {
-        sum_prob = sum_prob + c_ / pow((double) i, alpha_);
+        sum_prob = sum_prob + c_ / pow_lookup_table[i-1];
         if (sum_prob >= z)
         {
           zipf_value = i;
@@ -70,7 +77,8 @@ class Zipf {
     }
 
     void SetSeed(int seed) {
-      rand_val(seed);
+      // rand_val(seed);
+      gen.seed(seed);
     }
 
     //=========================================================================
@@ -115,6 +123,9 @@ class Zipf {
     long x_;     // Random int value
     bool first_; // Static first time flag
     double c_;   // Normalization constant
+    std::vector<double> pow_lookup_table;
+    std::uniform_real_distribution<double> dist;
+    std::default_random_engine gen;
 };
 
 }  // namespace util
