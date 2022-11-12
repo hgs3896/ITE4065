@@ -4,6 +4,7 @@
 #include "worker_pool.h"
 #include "timer.h"
 #include "distribution.h"
+#include "custom_utils.h"
 
 #include <gtest/gtest.h>
 
@@ -413,14 +414,10 @@ TEST_F(BwtreeTest, ConcurrentUniformInsert) {
 #ifdef BWTREE_DEBUG
   std::cout << "# of Total Insert Operations: " << tree->insert_op_count.load()
             << std::endl
-            << "# of Successful Total Insert Operations: "
-            << (tree->insert_op_count.load() - tree->insert_abort_count.load())
-            << std::endl
             << "# of Failed Total Insert Operations: "
             << tree->insert_abort_count.load() << std::endl
-            << "CAS Success Ratio: "
-            << (tree->insert_op_count.load() -
-                tree->insert_abort_count.load()) /
+            << "CAS Failure Per Insertion: "
+            << (tree->insert_abort_count.load()) /
                    double(tree->insert_op_count.load())
             << std::endl;
 #endif
@@ -499,14 +496,10 @@ TEST_F(BwtreeTest, ConcurrentSkewedInsert_00) {
 #ifdef BWTREE_DEBUG
   std::cout << "# of Total Insert Operations: " << tree->insert_op_count.load()
             << std::endl
-            << "# of Successful Total Insert Operations: "
-            << (tree->insert_op_count.load() - tree->insert_abort_count.load())
-            << std::endl
             << "# of Failed Total Insert Operations: "
             << tree->insert_abort_count.load() << std::endl
-            << "CAS Success Ratio: "
-            << (tree->insert_op_count.load() -
-                tree->insert_abort_count.load()) /
+            << "CAS Failure Per Insertion: "
+            << (tree->insert_abort_count.load()) /
                    double(tree->insert_op_count.load())
             << std::endl;
 #endif
@@ -585,14 +578,10 @@ TEST_F(BwtreeTest, ConcurrentSkewedInsert_10) {
 #ifdef BWTREE_DEBUG
   std::cout << "# of Total Insert Operations: " << tree->insert_op_count.load()
             << std::endl
-            << "# of Successful Total Insert Operations: "
-            << (tree->insert_op_count.load() - tree->insert_abort_count.load())
-            << std::endl
             << "# of Failed Total Insert Operations: "
             << tree->insert_abort_count.load() << std::endl
-            << "CAS Success Ratio: "
-            << (tree->insert_op_count.load() -
-                tree->insert_abort_count.load()) /
+            << "CAS Failure Per Insertion: "
+            << (tree->insert_abort_count.load()) /
                    double(tree->insert_op_count.load())
             << std::endl;
 #endif
@@ -671,14 +660,10 @@ TEST_F(BwtreeTest, ConcurrentSkewedInsert_20) {
 #ifdef BWTREE_DEBUG
   std::cout << "# of Total Insert Operations: " << tree->insert_op_count.load()
             << std::endl
-            << "# of Successful Total Insert Operations: "
-            << (tree->insert_op_count.load() - tree->insert_abort_count.load())
-            << std::endl
             << "# of Failed Total Insert Operations: "
             << tree->insert_abort_count.load() << std::endl
-            << "CAS Success Ratio: "
-            << (tree->insert_op_count.load() -
-                tree->insert_abort_count.load()) /
+            << "CAS Failure Per Insertion: "
+            << (tree->insert_abort_count.load()) /
                    double(tree->insert_op_count.load())
             << std::endl;
 #endif

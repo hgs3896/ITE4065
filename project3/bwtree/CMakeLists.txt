@@ -20,6 +20,8 @@ set(BWTREE_HEADERS
   ${BWTREE_HEADER_DIR}/timer.h
   ${BWTREE_HEADER_DIR}/worker_pool.h
   ${BWTREE_HEADER_DIR}/zipf.h
+  ${BWTREE_HEADER_DIR}/distribution.h
+  ${BWTREE_HEADER_DIR}/custom_utils.h
   # Add your headers here
   # ${BWTREE_HEADER_DIR}/foo/bar/your_header.h
   )
