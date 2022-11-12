@@ -44,6 +44,7 @@ namespace util {
             }
 
             inline void SetSeed(int seed) {
+                dist.SetSeed(seed);
             }
         private:
             int id, min;
