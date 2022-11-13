@@ -158,7 +158,7 @@ TEST(BwtreeInitTest, HandlesInitialization) {
  */
 class BwtreeTest : public ::testing::Test {
   public:
-    static constexpr int KEY_NUM = 1024 * 32;
+    static constexpr int KEY_NUM = 1024 * 8;
   protected:
     /*
      * NOTE: You can also use constructor/destructor instead of SetUp() and
@@ -344,14 +344,14 @@ TEST_F(BwtreeTest, ConcurrentMixed) {
 }
 
 /*
- * Basic functionality test of 1K concurrent random skewed inserts
+ * Basic functionality test of 8K concurrent random skewed inserts
  */
 /*
 TEST_F(BwtreeTest, ConcurrentUniformInsert) {
   NOISEPAGE_ASSERT(num_threads_ % 2 == 0,
       "This test requires an even number of threads. This should have been handled when it was assigned.");
 
-  // This defines the key space (0 ~ (1K - 1))
+  // This defines the key space (0 ~ (8K - 1))
   const uint32_t key_num = KEY_NUM;
   std::atomic<size_t> insert_success_counter = 0;
   std::atomic<size_t> total_op_counter = 0;
@@ -408,7 +408,7 @@ TEST_F(BwtreeTest, ConcurrentUniformInsert) {
 
   double ops = total_op_counter.load() / (timer.GetElapsed() / 1000.0);
   double success_ops = insert_success_counter.load() / (timer.GetElapsed() / 1000.0);
-  std::cout << std::fixed << "1K Insert(): " << timer.GetElapsed() << " (ms), "
+  std::cout << std::fixed << "8K Insert(): " << timer.GetElapsed() << " (ms), "
     << "write throughput: " << ops << " (op/s), "
     << "successive write throughput: " << success_ops << " (op/s)" << std::endl;
 
@@ -428,13 +428,13 @@ TEST_F(BwtreeTest, ConcurrentUniformInsert) {
 */
 
 /*
- * Basic functionality test of 1K concurrent random skewed inserts
+ * Basic functionality test of 8K concurrent random skewed inserts
  */
 TEST_F(BwtreeTest, ConcurrentSkewedInsert_00) {
   NOISEPAGE_ASSERT(num_threads_ % 2 == 0,
       "This test requires an even number of threads. This should have been handled when it was assigned.");
 
-  // This defines the key space (0 ~ (1K - 1))
+  // This defines the key space (0 ~ (8K - 1))
   const uint32_t key_num = KEY_NUM;
   std::atomic<size_t> insert_success_counter = 0;
   std::atomic<size_t> total_op_counter = 0;
@@ -491,7 +491,7 @@ TEST_F(BwtreeTest, ConcurrentSkewedInsert_00) {
 
   double ops = total_op_counter.load() / (timer.GetElapsed() / 1000.0);
   double success_ops = insert_success_counter.load() / (timer.GetElapsed() / 1000.0);
-  std::cout << std::fixed << "1K Insert(): " << timer.GetElapsed() << " (ms), "
+  std::cout << std::fixed << "8K Insert(): " << timer.GetElapsed() << " (ms), "
     << "write throughput: " << ops << " (op/s), "
     << "successive write throughput: " << success_ops << " (op/s)" << std::endl;
 
@@ -510,13 +510,13 @@ TEST_F(BwtreeTest, ConcurrentSkewedInsert_00) {
 }
 
 /*
- * Basic functionality test of 1K concurrent random skewed inserts
+ * Basic functionality test of 8K concurrent random skewed inserts
  */
 TEST_F(BwtreeTest, ConcurrentSkewedInsert_10) {
   NOISEPAGE_ASSERT(num_threads_ % 2 == 0,
       "This test requires an even number of threads. This should have been handled when it was assigned.");
 
-  // This defines the key space (0 ~ (1K - 1))
+  // This defines the key space (0 ~ (8K - 1))
   const uint32_t key_num = KEY_NUM;
   std::atomic<size_t> insert_success_counter = 0;
   std::atomic<size_t> total_op_counter = 0;
@@ -573,7 +573,7 @@ TEST_F(BwtreeTest, ConcurrentSkewedInsert_10) {
 
   double ops = total_op_counter.load() / (timer.GetElapsed() / 1000.0);
   double success_ops = insert_success_counter.load() / (timer.GetElapsed() / 1000.0);
-  std::cout << std::fixed << "1K Insert(): " << timer.GetElapsed() << " (ms), "
+  std::cout << std::fixed << "8K Insert(): " << timer.GetElapsed() << " (ms), "
     << "write throughput: " << ops << " (op/s), "
     << "successive write throughput: " << success_ops << " (op/s)" << std::endl;
 
@@ -592,13 +592,13 @@ TEST_F(BwtreeTest, ConcurrentSkewedInsert_10) {
 }
 
 /*
- * Basic functionality test of 1K concurrent random skewed inserts
+ * Basic functionality test of 8K concurrent random skewed inserts
  */
 TEST_F(BwtreeTest, ConcurrentSkewedInsert_20) {
   NOISEPAGE_ASSERT(num_threads_ % 2 == 0,
       "This test requires an even number of threads. This should have been handled when it was assigned.");
 
-  // This defines the key space (0 ~ (1K - 1))
+  // This defines the key space (0 ~ (8K - 1))
   const uint32_t key_num = KEY_NUM;
   std::atomic<size_t> insert_success_counter = 0;
   std::atomic<size_t> total_op_counter = 0;
@@ -655,7 +655,7 @@ TEST_F(BwtreeTest, ConcurrentSkewedInsert_20) {
 
   double ops = total_op_counter.load() / (timer.GetElapsed() / 1000.0);
   double success_ops = insert_success_counter.load() / (timer.GetElapsed() / 1000.0);
-  std::cout << std::fixed << "1K Insert(): " << timer.GetElapsed() << " (ms), "
+  std::cout << std::fixed << "8K Insert(): " << timer.GetElapsed() << " (ms), "
     << "write throughput: " << ops << " (op/s), "
     << "successive write throughput: " << success_ops << " (op/s)" << std::endl;
 
@@ -674,13 +674,13 @@ TEST_F(BwtreeTest, ConcurrentSkewedInsert_20) {
 }
 
 /*
- * Basic functionality test of 1K concurrent random skewed deletes
+ * Basic functionality test of 8K concurrent random skewed deletes
  */
 TEST_F(BwtreeTest, ConcurrentSkewedDelete_00) {
   NOISEPAGE_ASSERT(num_threads_ % 2 == 0,
       "This test requires an even number of threads. This should have been handled when it was assigned.");
 
-  // This defines the key space (0 ~ (1K - 1))
+  // This defines the key space (0 ~ (8K - 1))
   const uint32_t key_num = KEY_NUM;
   std::atomic<size_t> delete_success_counter = 0;
   std::atomic<size_t> total_op_counter = 0;
@@ -754,7 +754,7 @@ TEST_F(BwtreeTest, ConcurrentSkewedDelete_00) {
 
   double ops = total_op_counter.load() / (timer.GetElapsed() / 1000.0);
   double success_ops = delete_success_counter.load() / (timer.GetElapsed() / 1000.0);
-  std::cout << std::fixed << "1K Delete(): " << timer.GetElapsed() << " (ms), "
+  std::cout << std::fixed << "8K Delete(): " << timer.GetElapsed() << " (ms), "
     << "write throughput: " << ops << " (op/s), "
     << "successive write throughput: " << success_ops << " (op/s)" << std::endl;
 
@@ -773,13 +773,13 @@ TEST_F(BwtreeTest, ConcurrentSkewedDelete_00) {
 }
 
 /*
- * Basic functionality test of 1K concurrent random skewed deletes
+ * Basic functionality test of 8K concurrent random skewed deletes
  */
 TEST_F(BwtreeTest, ConcurrentSkewedDelete_10) {
   NOISEPAGE_ASSERT(num_threads_ % 2 == 0,
       "This test requires an even number of threads. This should have been handled when it was assigned.");
 
-  // This defines the key space (0 ~ (1K - 1))
+  // This defines the key space (0 ~ (8K - 1))
   const uint32_t key_num = KEY_NUM;
   std::atomic<size_t> delete_success_counter = 0;
   std::atomic<size_t> total_op_counter = 0;
@@ -853,7 +853,7 @@ TEST_F(BwtreeTest, ConcurrentSkewedDelete_10) {
 
   double ops = total_op_counter.load() / (timer.GetElapsed() / 1000.0);
   double success_ops = delete_success_counter.load() / (timer.GetElapsed() / 1000.0);
-  std::cout << std::fixed << "1K Delete(): " << timer.GetElapsed() << " (ms), "
+  std::cout << std::fixed << "8K Delete(): " << timer.GetElapsed() << " (ms), "
     << "write throughput: " << ops << " (op/s), "
     << "successive write throughput: " << success_ops << " (op/s)" << std::endl;
 
@@ -872,13 +872,13 @@ TEST_F(BwtreeTest, ConcurrentSkewedDelete_10) {
 }
 
 /*
- * Basic functionality test of 1K concurrent random skewed deletes
+ * Basic functionality test of 8K concurrent random skewed deletes
  */
 TEST_F(BwtreeTest, ConcurrentSkewedDelete_20) {
   NOISEPAGE_ASSERT(num_threads_ % 2 == 0,
       "This test requires an even number of threads. This should have been handled when it was assigned.");
 
-  // This defines the key space (0 ~ (1K - 1))
+  // This defines the key space (0 ~ (8K - 1))
   const uint32_t key_num = KEY_NUM;
   std::atomic<size_t> delete_success_counter = 0;
   std::atomic<size_t> total_op_counter = 0;
@@ -952,7 +952,7 @@ TEST_F(BwtreeTest, ConcurrentSkewedDelete_20) {
 
   double ops = total_op_counter.load() / (timer.GetElapsed() / 1000.0);
   double success_ops = delete_success_counter.load() / (timer.GetElapsed() / 1000.0);
-  std::cout << std::fixed << "1K Delete(): " << timer.GetElapsed() << " (ms), "
+  std::cout << std::fixed << "8K Delete(): " << timer.GetElapsed() << " (ms), "
     << "write throughput: " << ops << " (op/s), "
     << "successive write throughput: " << success_ops << " (op/s)" << std::endl;
 
