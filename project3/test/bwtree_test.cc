@@ -346,6 +346,7 @@ TEST_F(BwtreeTest, ConcurrentMixed) {
 /*
  * Basic functionality test of 1K concurrent random skewed inserts
  */
+/*
 TEST_F(BwtreeTest, ConcurrentUniformInsert) {
   NOISEPAGE_ASSERT(num_threads_ % 2 == 0,
       "This test requires an even number of threads. This should have been handled when it was assigned.");
@@ -414,7 +415,7 @@ TEST_F(BwtreeTest, ConcurrentUniformInsert) {
 #ifdef BWTREE_DEBUG
   std::cout << "# of Total Insert Operations: " << tree->insert_op_count.load()
             << std::endl
-            << "# of Failed Total Insert Operations: "
+            << "# of Aborted Insert Operations: "
             << tree->insert_abort_count.load() << std::endl
             << "CAS Failure Per Insertion: "
             << (tree->insert_abort_count.load()) /
@@ -424,6 +425,7 @@ TEST_F(BwtreeTest, ConcurrentUniformInsert) {
 
   delete tree;
 }
+*/
 
 /*
  * Basic functionality test of 1K concurrent random skewed inserts
@@ -496,7 +498,7 @@ TEST_F(BwtreeTest, ConcurrentSkewedInsert_00) {
 #ifdef BWTREE_DEBUG
   std::cout << "# of Total Insert Operations: " << tree->insert_op_count.load()
             << std::endl
-            << "# of Failed Total Insert Operations: "
+            << "# of Aborted Insert Operations: "
             << tree->insert_abort_count.load() << std::endl
             << "CAS Failure Per Insertion: "
             << (tree->insert_abort_count.load()) /
@@ -578,7 +580,7 @@ TEST_F(BwtreeTest, ConcurrentSkewedInsert_10) {
 #ifdef BWTREE_DEBUG
   std::cout << "# of Total Insert Operations: " << tree->insert_op_count.load()
             << std::endl
-            << "# of Failed Total Insert Operations: "
+            << "# of Aborted Insert Operations: "
             << tree->insert_abort_count.load() << std::endl
             << "CAS Failure Per Insertion: "
             << (tree->insert_abort_count.load()) /
@@ -660,11 +662,308 @@ TEST_F(BwtreeTest, ConcurrentSkewedInsert_20) {
 #ifdef BWTREE_DEBUG
   std::cout << "# of Total Insert Operations: " << tree->insert_op_count.load()
             << std::endl
-            << "# of Failed Total Insert Operations: "
+            << "# of Aborted Insert Operations: "
             << tree->insert_abort_count.load() << std::endl
             << "CAS Failure Per Insertion: "
             << (tree->insert_abort_count.load()) /
                    double(tree->insert_op_count.load())
+            << std::endl;
+#endif
+
+  delete tree;
+}
+
+/*
+ * Basic functionality test of 1K concurrent random skewed deletes
+ */
+TEST_F(BwtreeTest, ConcurrentSkewedDelete_00) {
+  NOISEPAGE_ASSERT(num_threads_ % 2 == 0,
+      "This test requires an even number of threads. This should have been handled when it was assigned.");
+
+  // This defines the key space (0 ~ (1K - 1))
+  const uint32_t key_num = KEY_NUM;
+  std::atomic<size_t> delete_success_counter = 0;
+  std::atomic<size_t> total_op_counter = 0;
+
+  // Make skewed insert workload
+  std::vector<std::vector<int>> key_lists(num_threads_);
+  std::unordered_map<int, int> key_hist;
+  for(uint32_t i = 0; i < num_threads_; i++) {
+    key_lists[i].reserve(key_num);
+    util::Distribution<util::DistributionType::Zipf> dist(0, key_num - 1, 0.0);
+    dist.SetSeed(i);
+    for(uint32_t j = 0; j < key_num; j++) {
+      key_lists[i].push_back(dist());
+      ++key_hist[key_lists[i].back()];
+    }
+  }
+
+  common::WorkerPool thread_pool(num_threads_, {});
+  thread_pool.Startup();
+  auto *const tree = test::BwTreeTestUtil::GetEmptyTree();
+
+  auto insert_workload = [&](uint32_t id) {
+    const uint32_t gcid = id + 1;
+    tree->AssignGCID(gcid);
+    
+    for (uint32_t i = 0; i < key_num; i++) {
+      int key = key_lists[id][i];
+
+      tree->Insert(key, key_num * id + i);
+    }
+
+    tree->UnregisterThread(gcid);
+  };
+
+  tree->UpdateThreadLocal(num_threads_ + 1);
+  test::MultiThreadTestUtil::RunThreadsUntilFinish(&thread_pool, num_threads_, insert_workload);
+  tree->UpdateThreadLocal(1);
+
+  auto workload = [&](uint32_t id) {
+    const uint32_t gcid = id + 1;
+    tree->AssignGCID(gcid);
+
+    uint32_t op_cnt = 0;
+    
+    for (uint32_t i = 0; i < key_num; i++) {
+      int key = key_lists[id][i];
+
+      if(tree->Delete(key, key_num * id + i)) delete_success_counter.fetch_add(1);
+      ++op_cnt;
+    }
+
+    tree->UnregisterThread(gcid);
+
+    total_op_counter.fetch_add(op_cnt);
+  };
+
+  util::Timer<std::milli> timer;
+  timer.Start();
+
+  tree->UpdateThreadLocal(num_threads_ + 1);
+  test::MultiThreadTestUtil::RunThreadsUntilFinish(&thread_pool, num_threads_, workload);
+  tree->UpdateThreadLocal(1);
+
+  timer.Stop();
+
+  // Verifies that all values are inserted after insertion test
+  for (auto [i, cnt] : key_hist) {
+    auto item = tree->GetValue(i);
+    EXPECT_EQ(item.size(), 0);
+  }
+
+  double ops = total_op_counter.load() / (timer.GetElapsed() / 1000.0);
+  double success_ops = delete_success_counter.load() / (timer.GetElapsed() / 1000.0);
+  std::cout << std::fixed << "1K Delete(): " << timer.GetElapsed() << " (ms), "
+    << "write throughput: " << ops << " (op/s), "
+    << "successive write throughput: " << success_ops << " (op/s)" << std::endl;
+
+#ifdef BWTREE_DEBUG
+  std::cout << "# of Total Delete Operations: " << tree->delete_op_count.load()
+            << std::endl
+            << "# of Aborted Delete Operations: "
+            << tree->delete_abort_count.load() << std::endl
+            << "CAS Failure Per Deletion: "
+            << (tree->delete_abort_count.load()) /
+                   double(tree->delete_op_count.load())
+            << std::endl;
+#endif
+
+  delete tree;
+}
+
+/*
+ * Basic functionality test of 1K concurrent random skewed deletes
+ */
+TEST_F(BwtreeTest, ConcurrentSkewedDelete_10) {
+  NOISEPAGE_ASSERT(num_threads_ % 2 == 0,
+      "This test requires an even number of threads. This should have been handled when it was assigned.");
+
+  // This defines the key space (0 ~ (1K - 1))
+  const uint32_t key_num = KEY_NUM;
+  std::atomic<size_t> delete_success_counter = 0;
+  std::atomic<size_t> total_op_counter = 0;
+
+  // Make skewed insert workload
+  std::vector<std::vector<int>> key_lists(num_threads_);
+  std::unordered_map<int, int> key_hist;
+  for(uint32_t i = 0; i < num_threads_; i++) {
+    key_lists[i].reserve(key_num);
+    util::Distribution<util::DistributionType::Zipf> dist(0, key_num - 1, 1.0);
+    dist.SetSeed(i);
+    for(uint32_t j = 0; j < key_num; j++) {
+      key_lists[i].push_back(dist());
+      ++key_hist[key_lists[i].back()];
+    }
+  }
+
+  common::WorkerPool thread_pool(num_threads_, {});
+  thread_pool.Startup();
+  auto *const tree = test::BwTreeTestUtil::GetEmptyTree();
+
+  auto insert_workload = [&](uint32_t id) {
+    const uint32_t gcid = id + 1;
+    tree->AssignGCID(gcid);
+    
+    for (uint32_t i = 0; i < key_num; i++) {
+      int key = key_lists[id][i];
+
+      tree->Insert(key, key_num * id + i);
+    }
+
+    tree->UnregisterThread(gcid);
+  };
+
+  tree->UpdateThreadLocal(num_threads_ + 1);
+  test::MultiThreadTestUtil::RunThreadsUntilFinish(&thread_pool, num_threads_, insert_workload);
+  tree->UpdateThreadLocal(1);
+
+  auto workload = [&](uint32_t id) {
+    const uint32_t gcid = id + 1;
+    tree->AssignGCID(gcid);
+
+    uint32_t op_cnt = 0;
+    
+    for (uint32_t i = 0; i < key_num; i++) {
+      int key = key_lists[id][i];
+
+      if(tree->Delete(key, key_num * id + i)) delete_success_counter.fetch_add(1);
+      ++op_cnt;
+    }
+
+    tree->UnregisterThread(gcid);
+
+    total_op_counter.fetch_add(op_cnt);
+  };
+
+  util::Timer<std::milli> timer;
+  timer.Start();
+
+  tree->UpdateThreadLocal(num_threads_ + 1);
+  test::MultiThreadTestUtil::RunThreadsUntilFinish(&thread_pool, num_threads_, workload);
+  tree->UpdateThreadLocal(1);
+
+  timer.Stop();
+
+  // Verifies that all values are inserted after insertion test
+  for (auto [i, cnt] : key_hist) {
+    auto item = tree->GetValue(i);
+    EXPECT_EQ(item.size(), 0);
+  }
+
+  double ops = total_op_counter.load() / (timer.GetElapsed() / 1000.0);
+  double success_ops = delete_success_counter.load() / (timer.GetElapsed() / 1000.0);
+  std::cout << std::fixed << "1K Delete(): " << timer.GetElapsed() << " (ms), "
+    << "write throughput: " << ops << " (op/s), "
+    << "successive write throughput: " << success_ops << " (op/s)" << std::endl;
+
+#ifdef BWTREE_DEBUG
+  std::cout << "# of Total Delete Operations: " << tree->delete_op_count.load()
+            << std::endl
+            << "# of Aborted Delete Operations: "
+            << tree->delete_abort_count.load() << std::endl
+            << "CAS Failure Per Deletion: "
+            << (tree->delete_abort_count.load()) /
+                   double(tree->delete_op_count.load())
+            << std::endl;
+#endif
+
+  delete tree;
+}
+
+/*
+ * Basic functionality test of 1K concurrent random skewed deletes
+ */
+TEST_F(BwtreeTest, ConcurrentSkewedDelete_20) {
+  NOISEPAGE_ASSERT(num_threads_ % 2 == 0,
+      "This test requires an even number of threads. This should have been handled when it was assigned.");
+
+  // This defines the key space (0 ~ (1K - 1))
+  const uint32_t key_num = KEY_NUM;
+  std::atomic<size_t> delete_success_counter = 0;
+  std::atomic<size_t> total_op_counter = 0;
+
+  // Make skewed insert workload
+  std::vector<std::vector<int>> key_lists(num_threads_);
+  std::unordered_map<int, int> key_hist;
+  for(uint32_t i = 0; i < num_threads_; i++) {
+    key_lists[i].reserve(key_num);
+    util::Distribution<util::DistributionType::Zipf> dist(0, key_num - 1, 2.0);
+    dist.SetSeed(i);
+    for(uint32_t j = 0; j < key_num; j++) {
+      key_lists[i].push_back(dist());
+      ++key_hist[key_lists[i].back()];
+    }
+  }
+
+  common::WorkerPool thread_pool(num_threads_, {});
+  thread_pool.Startup();
+  auto *const tree = test::BwTreeTestUtil::GetEmptyTree();
+
+  auto insert_workload = [&](uint32_t id) {
+    const uint32_t gcid = id + 1;
+    tree->AssignGCID(gcid);
+    
+    for (uint32_t i = 0; i < key_num; i++) {
+      int key = key_lists[id][i];
+
+      tree->Insert(key, key_num * id + i);
+    }
+
+    tree->UnregisterThread(gcid);
+  };
+
+  tree->UpdateThreadLocal(num_threads_ + 1);
+  test::MultiThreadTestUtil::RunThreadsUntilFinish(&thread_pool, num_threads_, insert_workload);
+  tree->UpdateThreadLocal(1);
+
+  auto workload = [&](uint32_t id) {
+    const uint32_t gcid = id + 1;
+    tree->AssignGCID(gcid);
+
+    uint32_t op_cnt = 0;
+    
+    for (uint32_t i = 0; i < key_num; i++) {
+      int key = key_lists[id][i];
+
+      if(tree->Delete(key, key_num * id + i)) delete_success_counter.fetch_add(1);
+      ++op_cnt;
+    }
+
+    tree->UnregisterThread(gcid);
+
+    total_op_counter.fetch_add(op_cnt);
+  };
+
+  util::Timer<std::milli> timer;
+  timer.Start();
+
+  tree->UpdateThreadLocal(num_threads_ + 1);
+  test::MultiThreadTestUtil::RunThreadsUntilFinish(&thread_pool, num_threads_, workload);
+  tree->UpdateThreadLocal(1);
+
+  timer.Stop();
+
+  // Verifies that all values are inserted after insertion test
+  for (auto [i, cnt] : key_hist) {
+    auto item = tree->GetValue(i);
+    EXPECT_EQ(item.size(), 0);
+  }
+
+  double ops = total_op_counter.load() / (timer.GetElapsed() / 1000.0);
+  double success_ops = delete_success_counter.load() / (timer.GetElapsed() / 1000.0);
+  std::cout << std::fixed << "1K Delete(): " << timer.GetElapsed() << " (ms), "
+    << "write throughput: " << ops << " (op/s), "
+    << "successive write throughput: " << success_ops << " (op/s)" << std::endl;
+
+#ifdef BWTREE_DEBUG
+  std::cout << "# of Total Delete Operations: " << tree->delete_op_count.load()
+            << std::endl
+            << "# of Aborted Delete Operations: "
+            << tree->delete_abort_count.load() << std::endl
+            << "CAS Failure Per Deletion: "
+            << (tree->delete_abort_count.load()) /
+                   double(tree->delete_op_count.load())
             << std::endl;
 #endif
 
