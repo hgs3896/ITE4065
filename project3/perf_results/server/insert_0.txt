@@ -1,0 +1,296 @@
+=================================================
+            Trace Event Information              
+=================================================
+  Total records                     :      33179
+  Locked Load/Store Operations      :         66
+  Load Operations                   :      16049
+  Loads - uncacheable               :          0
+  Loads - IO                        :          0
+  Loads - Miss                      :         17
+  Loads - no mapping                :          0
+  Load Fill Buffer Hit              :        733
+  Load L1D hit                      :      14432
+  Load L2D hit                      :          1
+  Load LLC hit                      :        838
+  Load Local HITM                   :         22
+  Load Remote HITM                  :         17
+  Load Remote HIT                   :          4
+  Load Local DRAM                   :          5
+  Load Remote DRAM                  :         23
+  Load MESI State Exclusive         :         24
+  Load MESI State Shared            :          4
+  Load LLC Misses                   :         49
+  LLC Misses to Local DRAM          :       10.2%
+  LLC Misses to Remote DRAM         :       46.9%
+  LLC Misses to Remote cache (HIT)  :        8.2%
+  LLC Misses to Remote cache (HITM) :       34.7%
+  Store Operations                  :      17130
+  Store - uncacheable               :          0
+  Store - no mapping                :          2
+  Store L1D Hit                     :          0
+  Store L1D Miss                    :      17128
+  No Page Map Rejects               :       6346
+  Unable to parse data source       :          0
+
+=================================================
+    Global Shared Cache Line Event Information   
+=================================================
+  Total Shared Cache Lines          :         36
+  Load HITs on shared lines         :         57
+  Fill Buffer Hits on shared lines  :          0
+  L1D hits on shared lines          :         13
+  L2D hits on shared lines          :          0
+  LLC hits on shared lines          :         26
+  Locked Access on shared lines     :         16
+  Store HITs on shared lines        :         26
+  Store L1D hits on shared lines    :          0
+  Total Merged records              :         65
+
+=================================================
+                 c2c details                     
+=================================================
+  Events                            : cpu/mem-loads,ldlat=30/P
+                                    : cpu/mem-stores/P
+  Cachelines sort on                : Total HITMs
+  Cacheline data grouping           : offset,iaddr
+
+=================================================
+           Shared Data Cache Line Table          
+=================================================
+#
+#        ----------- Cacheline ----------    Total      Tot  ----- LLC Load Hitm -----  ---- Store Reference ----  --- Load Dram ----      LLC    Total  ----- Core Load Hit -----  -- LLC Load Hit --
+# Index             Address  Node  PA cnt  records     Hitm    Total      Lcl      Rmt    Total    L1Hit   L1Miss       Lcl       Rmt  Ld Miss    Loads       FB       L1       L2       Llc       Rmt
+# .....  ..................  ....  ......  .......  .......  .......  .......  .......  .......  .......  .......  ........  ........  .......  .......  .......  .......  .......  ........  ........
+#
+      0      0x556a7490d380     0       9       19    7.69%        3        3        0        8        0        8         0         0        0       11        0        6        0         2         0
+      1      0x7f562c000b40     0       6       17    5.13%        2        2        0       10        0       10         0         0        0        7        0        4        0         1         0
+      2      0x556a7490d400     0       1       11    2.56%        1        0        1        7        0        7         0         1        2        4        0        2        0         0         0
+      3      0x7f55e808dbc0     0       1        1    2.56%        1        1        0        0        0        0         0         0        0        1        0        0        0         0         0
+      4      0x7f55f816af80     0       1        2    2.56%        1        0        1        0        0        0         0         1        2        2        0        0        0         0         0
+      5      0x7f5600233300     0       1        1    2.56%        1        1        0        0        0        0         0         0        0        1        0        0        0         0         0
+      6      0x7f5600276f00     0       1        2    2.56%        1        0        1        0        0        0         0         1        2        2        0        0        0         0         0
+      7      0x7f560424b040     0       1        2    2.56%        1        0        1        0        0        0         0         1        2        2        0        0        0         0         0
+      8      0x7f5608277980     0       1        2    2.56%        1        0        1        0        0        0         0         1        2        2        0        0        0         0         0
+      9      0x7f560c08e6c0     0       1        1    2.56%        1        1        0        0        0        0         0         0        0        1        0        0        0         0         0
+     10      0x7f56100639c0     0       1        1    2.56%        1        1        0        0        0        0         0         0        0        1        0        0        0         0         0
+     11      0x7f5610192340     0       1        2    2.56%        1        0        1        0        0        0         0         1        2        2        0        0        0         0         0
+     12      0x7f56141ebac0     0       1        2    2.56%        1        0        1        0        0        0         0         1        2        2        0        0        0         0         0
+     13      0x7f561c25c700     0       1        2    2.56%        1        0        1        0        0        0         0         1        2        2        0        0        0         0         0
+     14      0x7f5620055e00     0       1        1    2.56%        1        1        0        0        0        0         0         0        0        1        0        0        0         0         0
+     15      0x7f5624281480     1       1        2    2.56%        1        0        1        0        0        0         0         1        2        2        0        0        0         0         0
+     16      0x7f5628079400     0       1        1    2.56%        1        1        0        0        0        0         0         0        0        1        0        0        0         0         0
+     17      0x7f56280ddac0     0       1        1    2.56%        1        1        0        0        0        0         0         0        0        1        0        0        0         0         0
+     18      0x7f56282f0540     0       1        1    2.56%        1        1        0        0        0        0         0         0        0        1        0        0        0         0         0
+     19      0x7f5630284a00     0       1        2    2.56%        1        0        1        0        0        0         0         1        2        2        0        0        0         0         0
+     20      0x7f563029f800     0       1        2    2.56%        1        0        1        0        0        0         0         1        2        2        0        0        0         0         0
+     21      0x7f56341aa180     1       1        2    2.56%        1        0        1        0        0        0         0         1        2        2        0        0        0         0         0
+     22      0x7f5634220a40     1       1        1    2.56%        1        1        0        0        0        0         0         0        0        1        0        0        0         0         0
+     23      0x7f563422b640     1       1        2    2.56%        1        0        1        0        0        0         0         1        2        2        0        0        0         0         0
+     24      0x7f56382b7800     0       1        2    2.56%        1        0        1        0        0        0         0         1        2        2        0        0        0         0         0
+     25      0x7f56401cb900     0       1        2    2.56%        1        0        1        0        0        0         0         1        2        2        0        0        0         0         0
+     26      0x7f56470b7080     0       1        1    2.56%        1        1        0        0        0        0         0         0        0        1        0        0        0         0         0
+     27      0x7f56470b7640     0       1        1    2.56%        1        1        0        0        0        0         0         0        0        1        0        0        0         0         0
+     28      0x7f56470b7700     0       1        1    2.56%        1        1        0        0        0        0         0         0        0        1        0        0        0         0         0
+     29      0x7f56470b7940     0       2        4    2.56%        1        0        1        0        0        0         0         1        2        4        0        1        0         1         0
+     30      0x7f56470b7a80     0       1        1    2.56%        1        1        0        0        0        0         0         0        0        1        0        0        0         0         0
+     31      0x7f56470b82c0     0       1        1    2.56%        1        1        0        0        0        0         0         0        0        1        0        0        0         0         0
+     32      0x7f56470b8300     0       1        1    2.56%        1        1        0        0        0        0         0         0        0        1        0        0        0         0         0
+     33      0x7f56470b9dc0     0       1        1    2.56%        1        1        0        0        0        0         0         0        0        1        0        0        0         0         0
+     34      0x7f56470baa80     0       1        2    2.56%        1        0        1        0        0        0         0         1        2        2        0        0        0         0         0
+     35      0x7f56910c9680     0       2        2    2.56%        1        1        0        1        0        1         0         0        0        1        0        0        0         0         0
+
+=================================================
+      Shared Cache Line Distribution Pareto      
+=================================================
+#
+#        ----- HITM -----  -- Store Refs --  --------- Data address ---------                      ---------- cycles ----------    Total       cpu                                                                                                                                                                                                            Shared                         
+#   Num      Rmt      Lcl   L1 Hit  L1 Miss              Offset  Node  PA cnt        Code address  rmt hitm  lcl hitm      load  records       cnt                                                                                                                                                                                               Symbol       Object        Source:Line  Node
+# .....  .......  .......  .......  .......  ..................  ....  ......  ..................  ........  ........  ........  .......  ........  ...................................................................................................................................................................................................  ...........  .................  ....
+#
+  -------------------------------------------------------------
+      0        0        3        0        8      0x556a7490d380
+  -------------------------------------------------------------
+           0.00%   66.67%    0.00%    0.00%                 0x0     0       1      0x556a73377114         0       164        86        3         3  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::EpochManager::JoinEpoch       bwtree_test  bwtree.h:7232       0
+           0.00%   33.33%    0.00%    0.00%                 0x0     0       1      0x556a73383f46         0       100       110        2         2  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::EpochManager::AddGarbageNode  bwtree_test  bwtree.h:7194       0
+           0.00%    0.00%    0.00%  100.00%                0x38     0       1      0x556a73377195         0         0       392       14         9  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::EpochManager::JoinEpoch       bwtree_test  atomic_base.h:541   0  1
+
+  -------------------------------------------------------------
+      1        0        2        0       10      0x7f562c000b40
+  -------------------------------------------------------------
+           0.00%    0.00%    0.00%   30.00%                 0x8     0       1      0x7f56911689d4         0         0         0        3         3  [.] tcache_init.part.0                                                                                                                                                                                                                   libc-2.31.so  malloc.c:0          0
+           0.00%   50.00%    0.00%   30.00%                0x20     0       1      0x556a73377475         0       383       261        9         6  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::EpochManager::LeaveEpoch                                          bwtree_test   atomic_base.h:551   0
+           0.00%    0.00%    0.00%   30.00%                0x20     0       1      0x556a73377139         0         0         0        3         3  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::EpochManager::JoinEpoch                                           bwtree_test   atomic_base.h:541   0
+           0.00%   50.00%    0.00%    0.00%                0x28     0       1      0x556a7337d6eb         0       111         0        1         1  [.] std::atomic<bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::EpochManager::GarbageNode*>::load                     bwtree_test   atomic_base.h:740   0
+           0.00%    0.00%    0.00%   10.00%                0x28     0       1      0x556a73387438         0         0         0        1         1  [.] std::atomic<bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::EpochManager::GarbageNode*>::compare_exchange_strong  bwtree_test   atomic_base.h:779   0
+
+  -------------------------------------------------------------
+      2        1        0        0        7      0x556a7490d400
+  -------------------------------------------------------------
+         100.00%    0.00%    0.00%   85.71%                0x20     0       1      0x556a73377475       733         0         0        8         7  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::EpochManager::LeaveEpoch  bwtree_test  atomic_base.h:551   0  1
+           0.00%    0.00%    0.00%   14.29%                0x20     0       1      0x556a73377139         0         0       182        3         3  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::EpochManager::JoinEpoch   bwtree_test  atomic_base.h:541   0  1
+
+  -------------------------------------------------------------
+      3        0        1        0        0      0x7f55e808dbc0
+  -------------------------------------------------------------
+           0.00%  100.00%    0.00%    0.00%                 0x8     0       1      0x556a7338097d         0       101         0        1         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::AllocationMeta::TryAllocate  bwtree_test  bwtree.h:1621   0
+
+  -------------------------------------------------------------
+      4        1        0        0        0      0x7f55f816af80
+  -------------------------------------------------------------
+         100.00%    0.00%    0.00%    0.00%                0x38     0       1      0x556a73377574       242         0         0        2         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::BaseNode::GetLowKeyPair  bwtree_test  bwtree.h:1096   1
+
+  -------------------------------------------------------------
+      5        0        1        0        0      0x7f5600233300
+  -------------------------------------------------------------
+           0.00%  100.00%    0.00%    0.00%                 0x8     0       1      0x556a7338097d         0       105         0        1         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::AllocationMeta::TryAllocate  bwtree_test  bwtree.h:1621   0
+
+  -------------------------------------------------------------
+      6        1        0        0        0      0x7f5600276f00
+  -------------------------------------------------------------
+         100.00%    0.00%    0.00%    0.00%                0x18     0       1      0x556a7338097d       216         0         0        2         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::AllocationMeta::TryAllocate  bwtree_test  bwtree.h:1621   1
+
+  -------------------------------------------------------------
+      7        1        0        0        0      0x7f560424b040
+  -------------------------------------------------------------
+         100.00%    0.00%    0.00%    0.00%                0x38     0       1      0x556a73380706       192         0         0        2         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::BaseNode::GetNextNodeID  bwtree_test  bwtree.h:1101   1
+
+  -------------------------------------------------------------
+      8        1        0        0        0      0x7f5608277980
+  -------------------------------------------------------------
+         100.00%    0.00%    0.00%    0.00%                 0x0     0       1      0x556a73384e42        66         0         0        2         1  [.] std::equal_to<long>::operator()  bwtree_test  stl_function.h:356   1
+
+  -------------------------------------------------------------
+      9        0        1        0        0      0x7f560c08e6c0
+  -------------------------------------------------------------
+           0.00%  100.00%    0.00%    0.00%                0x30     0       1      0x556a7337f128         0        98         0        1         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::BaseNode::GetType  bwtree_test  bwtree.h:1014   0
+
+  -------------------------------------------------------------
+     10        0        1        0        0      0x7f56100639c0
+  -------------------------------------------------------------
+           0.00%  100.00%    0.00%    0.00%                0x38     0       1      0x556a73389ce2         0       127         0        1         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::KeyValuePairComparator::operator()  bwtree_test  bwtree.h:718   0
+
+  -------------------------------------------------------------
+     11        1        0        0        0      0x7f5610192340
+  -------------------------------------------------------------
+         100.00%    0.00%    0.00%    0.00%                0x28     0       1      0x7f56911669a0       136         0         0        2         1  [.] _int_free  libc-2.31.so  malloc.c:0    0
+
+  -------------------------------------------------------------
+     12        1        0        0        0      0x7f56141ebac0
+  -------------------------------------------------------------
+         100.00%    0.00%    0.00%    0.00%                 0x0     0       1      0x556a73380598       136         0         0        2         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::LocateSeparatorByKey  bwtree_test  bwtree.h:3007   1
+
+  -------------------------------------------------------------
+     13        1        0        0        0      0x7f561c25c700
+  -------------------------------------------------------------
+         100.00%    0.00%    0.00%    0.00%                0x18     0       1      0x556a73389ce2       240         0         0        2         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::KeyValuePairComparator::operator()  bwtree_test  bwtree.h:718   1
+
+  -------------------------------------------------------------
+     14        0        1        0        0      0x7f5620055e00
+  -------------------------------------------------------------
+           0.00%  100.00%    0.00%    0.00%                 0x8     0       1      0x556a73389ce2         0        78         0        1         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::KeyValuePairComparator::operator()  bwtree_test  bwtree.h:718   0
+
+  -------------------------------------------------------------
+     15        1        0        0        0      0x7f5624281480
+  -------------------------------------------------------------
+         100.00%    0.00%    0.00%    0.00%                0x38     1       1      0x556a7337f128       209         0         0        2         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::BaseNode::GetType  bwtree_test  bwtree.h:1014   1
+
+  -------------------------------------------------------------
+     16        0        1        0        0      0x7f5628079400
+  -------------------------------------------------------------
+           0.00%  100.00%    0.00%    0.00%                 0x0     0       1      0x556a7338d2d2         0        76         0        1         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::KeyValuePairHashFunc::operator()  bwtree_test  bwtree.h:783   0
+
+  -------------------------------------------------------------
+     17        0        1        0        0      0x7f56280ddac0
+  -------------------------------------------------------------
+           0.00%  100.00%    0.00%    0.00%                0x18     0       1      0x556a73389ce2         0        72         0        1         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::KeyValuePairComparator::operator()  bwtree_test  bwtree.h:718   0
+
+  -------------------------------------------------------------
+     18        0        1        0        0      0x7f56282f0540
+  -------------------------------------------------------------
+           0.00%  100.00%    0.00%    0.00%                0x38     0       1      0x556a7338097d         0        99         0        1         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::AllocationMeta::TryAllocate  bwtree_test  bwtree.h:1621   0
+
+  -------------------------------------------------------------
+     19        1        0        0        0      0x7f5630284a00
+  -------------------------------------------------------------
+         100.00%    0.00%    0.00%    0.00%                0x38     0       1      0x556a7337f128       255         0         0        2         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::BaseNode::GetType  bwtree_test  bwtree.h:1014   0
+
+  -------------------------------------------------------------
+     20        1        0        0        0      0x7f563029f800
+  -------------------------------------------------------------
+         100.00%    0.00%    0.00%    0.00%                 0x8     0       1      0x556a7338b713       138         0         0        2         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::KeyNodeIDPairComparator::operator()  bwtree_test  bwtree.h:629   1
+
+  -------------------------------------------------------------
+     21        1        0        0        0      0x7f56341aa180
+  -------------------------------------------------------------
+         100.00%    0.00%    0.00%    0.00%                0x18     1       1      0x556a73389ce2       226         0         0        2         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::KeyValuePairComparator::operator()  bwtree_test  bwtree.h:718   0
+
+  -------------------------------------------------------------
+     22        0        1        0        0      0x7f5634220a40
+  -------------------------------------------------------------
+           0.00%  100.00%    0.00%    0.00%                 0x8     1       1      0x556a73389ce2         0        59         0        1         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::KeyValuePairComparator::operator()  bwtree_test  bwtree.h:718   1
+
+  -------------------------------------------------------------
+     23        1        0        0        0      0x7f563422b640
+  -------------------------------------------------------------
+         100.00%    0.00%    0.00%    0.00%                 0x8     1       1      0x556a7338097d       235         0         0        2         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::AllocationMeta::TryAllocate  bwtree_test  bwtree.h:1621   0
+
+  -------------------------------------------------------------
+     24        1        0        0        0      0x7f56382b7800
+  -------------------------------------------------------------
+         100.00%    0.00%    0.00%    0.00%                0x28     0       1      0x556a73389ce2       228         0         0        2         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::KeyValuePairComparator::operator()  bwtree_test  bwtree.h:718   0
+
+  -------------------------------------------------------------
+     25        1        0        0        0      0x7f56401cb900
+  -------------------------------------------------------------
+         100.00%    0.00%    0.00%    0.00%                0x28     0       1      0x556a73389ce2       242         0         0        2         1  [.] bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::KeyValuePairComparator::operator()  bwtree_test  bwtree.h:718   1
+
+  -------------------------------------------------------------
+     26        0        1        0        0      0x7f56470b7080
+  -------------------------------------------------------------
+           0.00%  100.00%    0.00%    0.00%                 0x0     0       1      0x556a7337f0c1         0       101         0        1         1  [.] std::atomic<bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::BaseNode const*>::load  bwtree_test  atomic_base.h:740   0
+
+  -------------------------------------------------------------
+     27        0        1        0        0      0x7f56470b7640
+  -------------------------------------------------------------
+           0.00%  100.00%    0.00%    0.00%                 0x8     0       1      0x556a7337f0c1         0       110         0        1         1  [.] std::atomic<bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::BaseNode const*>::load  bwtree_test  atomic_base.h:740   0
+
+  -------------------------------------------------------------
+     28        0        1        0        0      0x7f56470b7700
+  -------------------------------------------------------------
+           0.00%  100.00%    0.00%    0.00%                 0x8     0       1      0x556a7337f0c1         0        99         0        1         1  [.] std::atomic<bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::BaseNode const*>::load  bwtree_test  atomic_base.h:740   0
+
+  -------------------------------------------------------------
+     29        1        0        0        0      0x7f56470b7940
+  -------------------------------------------------------------
+         100.00%    0.00%    0.00%    0.00%                0x30     0       1      0x556a7337f0c1       253         0         0        2         1  [.] std::atomic<bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::BaseNode const*>::load                     bwtree_test  atomic_base.h:740   0
+
+  -------------------------------------------------------------
+     30        0        1        0        0      0x7f56470b7a80
+  -------------------------------------------------------------
+           0.00%  100.00%    0.00%    0.00%                0x18     0       1      0x556a7337f0c1         0       109         0        1         1  [.] std::atomic<bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::BaseNode const*>::load  bwtree_test  atomic_base.h:740   0
+
+  -------------------------------------------------------------
+     31        0        1        0        0      0x7f56470b82c0
+  -------------------------------------------------------------
+           0.00%  100.00%    0.00%    0.00%                0x38     0       1      0x556a7337f0c1         0       109         0        1         1  [.] std::atomic<bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::BaseNode const*>::load  bwtree_test  atomic_base.h:740   0
+
+  -------------------------------------------------------------
+     32        0        1        0        0      0x7f56470b8300
+  -------------------------------------------------------------
+           0.00%  100.00%    0.00%    0.00%                0x10     0       1      0x556a7337f0c1         0       104         0        1         1  [.] std::atomic<bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::BaseNode const*>::load  bwtree_test  atomic_base.h:740   0
+
+  -------------------------------------------------------------
+     33        0        1        0        0      0x7f56470b9dc0
+  -------------------------------------------------------------
+           0.00%  100.00%    0.00%    0.00%                0x38     0       1      0x556a7337f0c1         0        81         0        1         1  [.] std::atomic<bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::BaseNode const*>::load  bwtree_test  atomic_base.h:740   0
+
+  -------------------------------------------------------------
+     34        1        0        0        0      0x7f56470baa80
+  -------------------------------------------------------------
+         100.00%    0.00%    0.00%    0.00%                 0x0     0       1      0x556a7337f0c1       199         0         0        2         1  [.] std::atomic<bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::BaseNode const*>::load  bwtree_test  atomic_base.h:740   0
+
+  -------------------------------------------------------------
+     35        0        1        0        1      0x7f56910c9680
+  -------------------------------------------------------------
+           0.00%  100.00%    0.00%    0.00%                 0x8     0       1      0x7f5691167e1c         0        80         0        1         1  [.] _int_malloc                                                                                                                                                                                                                                                                                                                                                                                                            libc-2.31.so  malloc.c:0           0
+           0.00%    0.00%    0.00%  100.00%                0x38     0       1      0x556a7338d515         0         0         0        1         1  [.] std::__copy_move_backward_a2<false, bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::LeafDataNode const**, bwtree::BwTree<long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash<long>, std::equal_to<long>, std::hash<long> >::LeafDataNode const**>  bwtree_test   stl_algobase.h:615   0

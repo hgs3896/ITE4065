@@ -1,0 +1,109 @@
+Running main() from /home/2022_cp_project/student30473/ITE4065-main/project3/debug/_deps/googletest-src/googletest/src/gtest_main.cc
+[==========] Running 17 tests from 3 test suites.
+[----------] Global test environment set-up.
+[----------] 6 tests from UtilTest
+[ RUN      ] UtilTest.UniformDist_SeedTest
+[       OK ] UtilTest.UniformDist_SeedTest (0 ms)
+[ RUN      ] UtilTest.UniformDistTest
+ 1 ********** 106
+ 2 ********** 109
+ 3 ********** 102
+ 4 *********** 118
+ 5 ************* 133
+ 6 ********** 103
+ 7 ************* 133
+ 8 ********** 100
+ 9 ********* 96
+[       OK ] UtilTest.UniformDistTest (0 ms)
+[ RUN      ] UtilTest.ZipfDist_SeedTest
+[       OK ] UtilTest.ZipfDist_SeedTest (0 ms)
+[ RUN      ] UtilTest.ZipfDistTest_0
+ 1 ********** 105
+ 2 ************* 134
+ 3 ********** 101
+ 4 *********** 110
+ 5 *********** 118
+ 6 *********** 110
+ 7 *********** 119
+ 8 ********** 100
+ 9 ********** 103
+[       OK ] UtilTest.ZipfDistTest_0 (0 ms)
+[ RUN      ] UtilTest.ZipfDistTest_1
+ 1 *********************************** 357
+ 2 ****************** 186
+ 3 *********** 112
+ 4 ********* 97
+ 5 ****** 65
+ 6 ****** 62
+ 7 **** 42
+ 8 **** 45
+ 9 *** 34
+[       OK ] UtilTest.ZipfDistTest_1 (0 ms)
+[ RUN      ] UtilTest.ZipfDistTest_2
+ 1 ***************************************************************** 657
+ 2 **************** 161
+ 3 ******* 73
+ 4 *** 38
+ 5 ** 28
+ 6 * 17
+ 7 * 13
+ 8  9
+ 9  4
+[       OK ] UtilTest.ZipfDistTest_2 (0 ms)
+[----------] 6 tests from UtilTest (1 ms total)
+
+[----------] 1 test from BwtreeInitTest
+[ RUN      ] BwtreeInitTest.HandlesInitialization
+[       OK ] BwtreeInitTest.HandlesInitialization (0 ms)
+[----------] 1 test from BwtreeInitTest (0 ms total)
+
+[----------] 10 tests from BwtreeTest
+[ RUN      ] BwtreeTest.NonUniqueInsert
+[       OK ] BwtreeTest.NonUniqueInsert (22754 ms)
+[ RUN      ] BwtreeTest.UniqueInsert
+[       OK ] BwtreeTest.UniqueInsert (53568 ms)
+[ RUN      ] BwtreeTest.ConcurrentRandomInsert
+[       OK ] BwtreeTest.ConcurrentRandomInsert (5400 ms)
+[ RUN      ] BwtreeTest.ConcurrentMixed
+[       OK ] BwtreeTest.ConcurrentMixed (28575 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_00
+8K Insert(): 73.0 (ms), write throughput: 2244254.1 (op/s), successive write throughput: 2244254.1 (op/s)
+# of Total Insert Operations: 163840
+# of Aborted Insert Operations: 4242
+CAS Failure Per Insertion: 0.0
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_00 (3510 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_10
+8K Insert(): 2981.8 (ms), write throughput: 54946.2 (op/s), successive write throughput: 54946.2 (op/s)
+# of Total Insert Operations: 163840
+# of Aborted Insert Operations: 271214
+CAS Failure Per Insertion: 1.7
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_10 (3872 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_20
+8K Insert(): 111771.3 (ms), write throughput: 1465.9 (op/s), successive write throughput: 1465.9 (op/s)
+# of Total Insert Operations: 163840
+# of Aborted Insert Operations: 1592268
+CAS Failure Per Insertion: 9.7
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_20 (111976 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedDelete_00
+8K Delete(): 71.6 (ms), write throughput: 2288468.9 (op/s), successive write throughput: 2288468.9 (op/s)
+# of Total Delete Operations: 163840
+# of Aborted Delete Operations: 1214
+CAS Failure Per Deletion: 0.0
+[       OK ] BwtreeTest.ConcurrentSkewedDelete_00 (3537 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedDelete_10
+8K Delete(): 733.8 (ms), write throughput: 223283.4 (op/s), successive write throughput: 223283.4 (op/s)
+# of Total Delete Operations: 163840
+# of Aborted Delete Operations: 64448
+CAS Failure Per Deletion: 0.4
+[       OK ] BwtreeTest.ConcurrentSkewedDelete_10 (5638 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedDelete_20
+8K Delete(): 20983.0 (ms), write throughput: 7808.2 (op/s), successive write throughput: 7808.2 (op/s)
+# of Total Delete Operations: 163840
+# of Aborted Delete Operations: 271787
+CAS Failure Per Deletion: 1.7
+[       OK ] BwtreeTest.ConcurrentSkewedDelete_20 (150459 ms)
+[----------] 10 tests from BwtreeTest (389293 ms total)
+
+[----------] Global test environment tear-down
+[==========] 17 tests from 3 test suites ran. (389295 ms total)
+[  PASSED  ] 17 tests.

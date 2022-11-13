@@ -1,0 +1,2237 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" width="1200" height="598" onload="init(evt)" viewBox="0 0 1200 598" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<!-- Flame graph stack visualization. See https://github.com/brendangregg/FlameGraph for latest version, and http://www.brendangregg.com/flamegraphs.html for examples. -->
+<!-- NOTES:  -->
+<defs>
+	<linearGradient id="background" y1="0" y2="1" x1="0" x2="0" >
+		<stop stop-color="#eeeeee" offset="5%" />
+		<stop stop-color="#eeeeb0" offset="95%" />
+	</linearGradient>
+</defs>
+<style type="text/css">
+	text { font-family:Verdana; font-size:12px; fill:rgb(0,0,0); }
+	#search, #ignorecase { opacity:0.1; cursor:pointer; }
+	#search:hover, #search.show, #ignorecase:hover, #ignorecase.show { opacity:1; }
+	#subtitle { text-anchor:middle; font-color:rgb(160,160,160); }
+	#title { text-anchor:middle; font-size:17px}
+	#unzoom { cursor:pointer; }
+	#frames > *:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+	.hide { display:none; }
+	.parent { opacity:0.5; }
+</style>
+<script type="text/ecmascript">
+<![CDATA[
+	"use strict";
+	var details, searchbtn, unzoombtn, matchedtxt, svg, searching, currentSearchTerm, ignorecase, ignorecaseBtn;
+	function init(evt) {
+		details = document.getElementById("details").firstChild;
+		searchbtn = document.getElementById("search");
+		ignorecaseBtn = document.getElementById("ignorecase");
+		unzoombtn = document.getElementById("unzoom");
+		matchedtxt = document.getElementById("matched");
+		svg = document.getElementsByTagName("svg")[0];
+		searching = 0;
+		currentSearchTerm = null;
+
+		// use GET parameters to restore a flamegraphs state.
+		var params = get_params();
+		if (params.x && params.y)
+			zoom(find_group(document.querySelector('[x="' + params.x + '"][y="' + params.y + '"]')));
+                if (params.s) search(params.s);
+	}
+
+	// event listeners
+	window.addEventListener("click", function(e) {
+		var target = find_group(e.target);
+		if (target) {
+			if (target.nodeName == "a") {
+				if (e.ctrlKey === false) return;
+				e.preventDefault();
+			}
+			if (target.classList.contains("parent")) unzoom(true);
+			zoom(target);
+			if (!document.querySelector('.parent')) {
+				// we have basically done a clearzoom so clear the url
+				var params = get_params();
+				if (params.x) delete params.x;
+				if (params.y) delete params.y;
+				history.replaceState(null, null, parse_params(params));
+				unzoombtn.classList.add("hide");
+				return;
+			}
+
+			// set parameters for zoom state
+			var el = target.querySelector("rect");
+			if (el && el.attributes && el.attributes.y && el.attributes._orig_x) {
+				var params = get_params()
+				params.x = el.attributes._orig_x.value;
+				params.y = el.attributes.y.value;
+				history.replaceState(null, null, parse_params(params));
+			}
+		}
+		else if (e.target.id == "unzoom") clearzoom();
+		else if (e.target.id == "search") search_prompt();
+		else if (e.target.id == "ignorecase") toggle_ignorecase();
+	}, false)
+
+	// mouse-over for info
+	// show
+	window.addEventListener("mouseover", function(e) {
+		var target = find_group(e.target);
+		if (target) details.nodeValue = "Function: " + g_to_text(target);
+	}, false)
+
+	// clear
+	window.addEventListener("mouseout", function(e) {
+		var target = find_group(e.target);
+		if (target) details.nodeValue = ' ';
+	}, false)
+
+	// ctrl-F for search
+	// ctrl-I to toggle case-sensitive search
+	window.addEventListener("keydown",function (e) {
+		if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+			e.preventDefault();
+			search_prompt();
+		}
+		else if (e.ctrlKey && e.keyCode === 73) {
+			e.preventDefault();
+			toggle_ignorecase();
+		}
+	}, false)
+
+	// functions
+	function get_params() {
+		var params = {};
+		var paramsarr = window.location.search.substr(1).split('&');
+		for (var i = 0; i < paramsarr.length; ++i) {
+			var tmp = paramsarr[i].split("=");
+			if (!tmp[0] || !tmp[1]) continue;
+			params[tmp[0]]  = decodeURIComponent(tmp[1]);
+		}
+		return params;
+	}
+	function parse_params(params) {
+		var uri = "?";
+		for (var key in params) {
+			uri += key + '=' + encodeURIComponent(params[key]) + '&';
+		}
+		if (uri.slice(-1) == "&")
+			uri = uri.substring(0, uri.length - 1);
+		if (uri == '?')
+			uri = window.location.href.split('?')[0];
+		return uri;
+	}
+	function find_child(node, selector) {
+		var children = node.querySelectorAll(selector);
+		if (children.length) return children[0];
+	}
+	function find_group(node) {
+		var parent = node.parentElement;
+		if (!parent) return;
+		if (parent.id == "frames") return node;
+		return find_group(parent);
+	}
+	function orig_save(e, attr, val) {
+		if (e.attributes["_orig_" + attr] != undefined) return;
+		if (e.attributes[attr] == undefined) return;
+		if (val == undefined) val = e.attributes[attr].value;
+		e.setAttribute("_orig_" + attr, val);
+	}
+	function orig_load(e, attr) {
+		if (e.attributes["_orig_"+attr] == undefined) return;
+		e.attributes[attr].value = e.attributes["_orig_" + attr].value;
+		e.removeAttribute("_orig_"+attr);
+	}
+	function g_to_text(e) {
+		var text = find_child(e, "title").firstChild.nodeValue;
+		return (text)
+	}
+	function g_to_func(e) {
+		var func = g_to_text(e);
+		// if there's any manipulation we want to do to the function
+		// name before it's searched, do it here before returning.
+		return (func);
+	}
+	function update_text(e) {
+		var r = find_child(e, "rect");
+		var t = find_child(e, "text");
+		var w = parseFloat(r.attributes.width.value) -3;
+		var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+		t.attributes.x.value = parseFloat(r.attributes.x.value) + 3;
+
+		// Smaller than this size won't fit anything
+		if (w < 2 * 12 * 0.59) {
+			t.textContent = "";
+			return;
+		}
+
+		t.textContent = txt;
+		var sl = t.getSubStringLength(0, txt.length);
+		// check if only whitespace or if we can fit the entire string into width w
+		if (/^ *$/.test(txt) || sl < w)
+			return;
+
+		// this isn't perfect, but gives a good starting point
+		// and avoids calling getSubStringLength too often
+		var start = Math.floor((w/sl) * txt.length);
+		for (var x = start; x > 0; x = x-2) {
+			if (t.getSubStringLength(0, x + 2) <= w) {
+				t.textContent = txt.substring(0, x) + "..";
+				return;
+			}
+		}
+		t.textContent = "";
+	}
+
+	// zoom
+	function zoom_reset(e) {
+		if (e.attributes != undefined) {
+			orig_load(e, "x");
+			orig_load(e, "width");
+		}
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_reset(c[i]);
+		}
+	}
+	function zoom_child(e, x, ratio) {
+		if (e.attributes != undefined) {
+			if (e.attributes.x != undefined) {
+				orig_save(e, "x");
+				e.attributes.x.value = (parseFloat(e.attributes.x.value) - x - 10) * ratio + 10;
+				if (e.tagName == "text")
+					e.attributes.x.value = find_child(e.parentNode, "rect[x]").attributes.x.value + 3;
+			}
+			if (e.attributes.width != undefined) {
+				orig_save(e, "width");
+				e.attributes.width.value = parseFloat(e.attributes.width.value) * ratio;
+			}
+		}
+
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_child(c[i], x - 10, ratio);
+		}
+	}
+	function zoom_parent(e) {
+		if (e.attributes) {
+			if (e.attributes.x != undefined) {
+				orig_save(e, "x");
+				e.attributes.x.value = 10;
+			}
+			if (e.attributes.width != undefined) {
+				orig_save(e, "width");
+				e.attributes.width.value = parseInt(svg.width.baseVal.value) - (10 * 2);
+			}
+		}
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_parent(c[i]);
+		}
+	}
+	function zoom(node) {
+		var attr = find_child(node, "rect").attributes;
+		var width = parseFloat(attr.width.value);
+		var xmin = parseFloat(attr.x.value);
+		var xmax = parseFloat(xmin + width);
+		var ymin = parseFloat(attr.y.value);
+		var ratio = (svg.width.baseVal.value - 2 * 10) / width;
+
+		// XXX: Workaround for JavaScript float issues (fix me)
+		var fudge = 0.0001;
+
+		unzoombtn.classList.remove("hide");
+
+		var el = document.getElementById("frames").children;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			var a = find_child(e, "rect").attributes;
+			var ex = parseFloat(a.x.value);
+			var ew = parseFloat(a.width.value);
+			var upstack;
+			// Is it an ancestor
+			if (0 == 0) {
+				upstack = parseFloat(a.y.value) > ymin;
+			} else {
+				upstack = parseFloat(a.y.value) < ymin;
+			}
+			if (upstack) {
+				// Direct ancestor
+				if (ex <= xmin && (ex+ew+fudge) >= xmax) {
+					e.classList.add("parent");
+					zoom_parent(e);
+					update_text(e);
+				}
+				// not in current path
+				else
+					e.classList.add("hide");
+			}
+			// Children maybe
+			else {
+				// no common path
+				if (ex < xmin || ex + fudge >= xmax) {
+					e.classList.add("hide");
+				}
+				else {
+					zoom_child(e, xmin, ratio);
+					update_text(e);
+				}
+			}
+		}
+		search();
+	}
+	function unzoom(dont_update_text) {
+		unzoombtn.classList.add("hide");
+		var el = document.getElementById("frames").children;
+		for(var i = 0; i < el.length; i++) {
+			el[i].classList.remove("parent");
+			el[i].classList.remove("hide");
+			zoom_reset(el[i]);
+			if(!dont_update_text) update_text(el[i]);
+		}
+		search();
+	}
+	function clearzoom() {
+		unzoom();
+
+		// remove zoom state
+		var params = get_params();
+		if (params.x) delete params.x;
+		if (params.y) delete params.y;
+		history.replaceState(null, null, parse_params(params));
+	}
+
+	// search
+	function toggle_ignorecase() {
+		ignorecase = !ignorecase;
+		if (ignorecase) {
+			ignorecaseBtn.classList.add("show");
+		} else {
+			ignorecaseBtn.classList.remove("show");
+		}
+		reset_search();
+		search();
+	}
+	function reset_search() {
+		var el = document.querySelectorAll("#frames rect");
+		for (var i = 0; i < el.length; i++) {
+			orig_load(el[i], "fill")
+		}
+		var params = get_params();
+		delete params.s;
+		history.replaceState(null, null, parse_params(params));
+	}
+	function search_prompt() {
+		if (!searching) {
+			var term = prompt("Enter a search term (regexp " +
+			    "allowed, eg: ^ext4_)"
+			    + (ignorecase ? ", ignoring case" : "")
+			    + "\nPress Ctrl-i to toggle case sensitivity", "");
+			if (term != null) search(term);
+		} else {
+			reset_search();
+			searching = 0;
+			currentSearchTerm = null;
+			searchbtn.classList.remove("show");
+			searchbtn.firstChild.nodeValue = "Search"
+			matchedtxt.classList.add("hide");
+			matchedtxt.firstChild.nodeValue = ""
+		}
+	}
+	function search(term) {
+		if (term) currentSearchTerm = term;
+
+		var re = new RegExp(currentSearchTerm, ignorecase ? 'i' : '');
+		var el = document.getElementById("frames").children;
+		var matches = new Object();
+		var maxwidth = 0;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			var func = g_to_func(e);
+			var rect = find_child(e, "rect");
+			if (func == null || rect == null)
+				continue;
+
+			// Save max width. Only works as we have a root frame
+			var w = parseFloat(rect.attributes.width.value);
+			if (w > maxwidth)
+				maxwidth = w;
+
+			if (func.match(re)) {
+				// highlight
+				var x = parseFloat(rect.attributes.x.value);
+				orig_save(rect, "fill");
+				rect.attributes.fill.value = "rgb(230,0,230)";
+
+				// remember matches
+				if (matches[x] == undefined) {
+					matches[x] = w;
+				} else {
+					if (w > matches[x]) {
+						// overwrite with parent
+						matches[x] = w;
+					}
+				}
+				searching = 1;
+			}
+		}
+		if (!searching)
+			return;
+		var params = get_params();
+		params.s = currentSearchTerm;
+		history.replaceState(null, null, parse_params(params));
+
+		searchbtn.classList.add("show");
+		searchbtn.firstChild.nodeValue = "Reset Search";
+
+		// calculate percent matched, excluding vertical overlap
+		var count = 0;
+		var lastx = -1;
+		var lastw = 0;
+		var keys = Array();
+		for (k in matches) {
+			if (matches.hasOwnProperty(k))
+				keys.push(k);
+		}
+		// sort the matched frames by their x location
+		// ascending, then width descending
+		keys.sort(function(a, b){
+			return a - b;
+		});
+		// Step through frames saving only the biggest bottom-up frames
+		// thanks to the sort order. This relies on the tree property
+		// where children are always smaller than their parents.
+		var fudge = 0.0001;	// JavaScript floating point
+		for (var k in keys) {
+			var x = parseFloat(keys[k]);
+			var w = matches[keys[k]];
+			if (x >= lastx + lastw - fudge) {
+				count += w;
+				lastx = x;
+				lastw = w;
+			}
+		}
+		// display matched percent
+		matchedtxt.classList.remove("hide");
+		var pct = 100 * count / maxwidth;
+		if (pct != 100) pct = pct.toFixed(1)
+		matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+	}
+]]>
+</script>
+<rect x="0.0" y="0" width="1200.0" height="598.0" fill="url(#background)"  />
+<text id="title" x="600.00" y="24" >Flame Graph</text>
+<text id="details" x="10.00" y="581" > </text>
+<text id="unzoom" x="10.00" y="24" class="hide">Reset Zoom</text>
+<text id="search" x="1090.00" y="24" >Search</text>
+<text id="ignorecase" x="1174.00" y="24" >ic</text>
+<text id="matched" x="1090.00" y="581" > </text>
+<g id="frames">
+<g >
+<title>bool __gnu_cxx::__ops::_Iter_comp_val&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairComparator&gt;::operator (1,500,000 samples, 0.25%)</title><rect x="148.6" y="85" width="3.0" height="15.0" fill="rgb(240,194,32)" rx="2" ry="2" />
+<text  x="151.62" y="95.5" ></text>
+</g>
+<g >
+<title>bool __gnu_cxx::__ops::_Iter_comp_val&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairComparator&gt;::operator (3,750,000 samples, 0.63%)</title><rect x="244.3" y="165" width="7.4" height="15.0" fill="rgb(246,7,43)" rx="2" ry="2" />
+<text  x="247.32" y="175.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::GetLatestNodeSnapshot (250,000 samples, 0.04%)</title><rect x="73.6" y="181" width="0.5" height="15.0" fill="rgb(217,128,29)" rx="2" ry="2" />
+<text  x="76.64" y="191.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::_Scoped_node::~_Scoped_node (500,000 samples, 0.08%)</title><rect x="303.0" y="213" width="1.0" height="15.0" fill="rgb(238,191,27)" rx="2" ry="2" />
+<text  x="306.03" y="223.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyCmpGreaterEqual (250,000 samples, 0.04%)</title><rect x="277.9" y="245" width="0.5" height="15.0" fill="rgb(242,41,28)" rx="2" ry="2" />
+<text  x="280.87" y="255.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hash_node_value_base&lt;long&gt;::_M_v (750,000 samples, 0.13%)</title><rect x="296.1" y="149" width="1.5" height="15.0" fill="rgb(213,55,42)" rx="2" ry="2" />
+<text  x="299.12" y="159.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, long&gt; &gt;::~ElasticNode (3,250,000 samples, 0.54%)</title><rect x="314.9" y="229" width="6.4" height="15.0" fill="rgb(233,139,6)" rx="2" ry="2" />
+<text  x="317.87" y="239.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyNodeIDPairComparator::operator (1,750,000 samples, 0.29%)</title><rect x="192.0" y="133" width="3.5" height="15.0" fill="rgb(235,110,0)" rx="2" ry="2" />
+<text  x="195.03" y="143.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Node_iterator_base&lt;long, false&gt;::_Node_iterator_base (250,000 samples, 0.04%)</title><rect x="302.0" y="181" width="0.5" height="15.0" fill="rgb(228,77,3)" rx="2" ry="2" />
+<text  x="305.04" y="191.5" ></text>
+</g>
+<g >
+<title>std::atomic&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode const*&gt;::compare_exchange_strong (1,000,000 samples, 0.17%)</title><rect x="153.6" y="133" width="1.9" height="15.0" fill="rgb(222,63,14)" rx="2" ry="2" />
+<text  x="156.55" y="143.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::NavigateSiblingChain (2,250,000 samples, 0.38%)</title><rect x="203.9" y="197" width="4.4" height="15.0" fill="rgb(214,111,32)" rx="2" ry="2" />
+<text  x="206.87" y="207.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hash_code_base&lt;long, long, std::__detail::_Identity, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, false&gt;::_M_hash (250,000 samples, 0.04%)</title><rect x="295.6" y="133" width="0.5" height="15.0" fill="rgb(219,62,49)" rx="2" ry="2" />
+<text  x="298.63" y="143.5" ></text>
+</g>
+<g >
+<title>std::equal_to&lt;long&gt;::operator (1,000,000 samples, 0.17%)</title><rect x="233.0" y="181" width="1.9" height="15.0" fill="rgb(221,9,6)" rx="2" ry="2" />
+<text  x="235.98" y="191.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;std::__strip_reference_wrapper&lt;std::decay&lt;long const&amp;&gt;::type&gt;::__type, std::__strip_reference_wrapper&lt;std::decay&lt;long&gt;::type&gt;::__type&gt; std::make_pair&lt;long const&amp;, long&gt; (1,500,000 samples, 0.25%)</title><rect x="257.1" y="197" width="3.0" height="15.0" fill="rgb(225,156,15)" rx="2" ry="2" />
+<text  x="260.15" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, long&gt; &gt;::PushBack (250,000 samples, 0.04%)</title><rect x="74.1" y="165" width="0.5" height="15.0" fill="rgb(220,223,37)" rx="2" ry="2" />
+<text  x="77.13" y="175.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Mod_range_hashing::operator (250,000 samples, 0.04%)</title><rect x="323.3" y="261" width="0.4" height="15.0" fill="rgb(225,142,36)" rx="2" ry="2" />
+<text  x="326.25" y="271.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;long, long&gt;::pair&lt;long, long, true&gt; (500,000 samples, 0.08%)</title><rect x="56.4" y="197" width="1.0" height="15.0" fill="rgb(207,217,0)" rx="2" ry="2" />
+<text  x="59.37" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ValueCmpEqual (2,500,000 samples, 0.42%)</title><rect x="230.0" y="197" width="4.9" height="15.0" fill="rgb(207,168,38)" rx="2" ry="2" />
+<text  x="233.02" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const** std::__copy_move_backward_a1&lt;false, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const**, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const**&gt; (500,000 samples, 0.08%)</title><rect x="135.8" y="69" width="1.0" height="15.0" fill="rgb(207,177,6)" rx="2" ry="2" />
+<text  x="138.79" y="79.5" ></text>
+</g>
+<g >
+<title>void std::advance&lt;std::pair&lt;long, long&gt; const*, long&gt; (2,000,000 samples, 0.33%)</title><rect x="252.7" y="165" width="4.0" height="15.0" fill="rgb(225,211,20)" rx="2" ry="2" />
+<text  x="255.71" y="175.5" ></text>
+</g>
+<g >
+<title>double std::uniform_real_distribution&lt;double&gt;::operator (2,000,000 samples, 0.33%)</title><rect x="1132.3" y="261" width="3.9" height="15.0" fill="rgb(218,75,17)" rx="2" ry="2" />
+<text  x="1135.28" y="271.5" ></text>
+</g>
+<g >
+<title>std::iterator_traits&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const**&gt;::difference_type std::distance&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const**&gt; (250,000 samples, 0.04%)</title><rect x="144.7" y="69" width="0.5" height="15.0" fill="rgb(233,113,39)" rx="2" ry="2" />
+<text  x="147.67" y="79.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InstallNodeToReplace (250,000 samples, 0.04%)</title><rect x="155.5" y="165" width="0.5" height="15.0" fill="rgb(251,196,10)" rx="2" ry="2" />
+<text  x="158.53" y="175.5" ></text>
+</g>
+<g >
+<title>bwtree::BloomFilter&lt;std::pair&lt;long, long&gt;, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairEqualityChecker, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairHashFunc&gt;::__InsertScalar (1,000,000 samples, 0.17%)</title><rect x="114.6" y="101" width="2.0" height="15.0" fill="rgb(217,41,19)" rx="2" ry="2" />
+<text  x="117.58" y="111.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::vector&lt;int, std::allocator&lt;int&gt; &gt;, std::allocator&lt;std::vector&lt;int, std::allocator&lt;int&gt; &gt; &gt; &gt;::operator[] (500,000 samples, 0.08%)</title><rect x="338.5" y="309" width="1.0" height="15.0" fill="rgb(246,10,7)" rx="2" ry="2" />
+<text  x="341.55" y="319.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hash_node&lt;long, false&gt;* std::__to_address&lt;std::__detail::_Hash_node&lt;long, false&gt; &gt; (250,000 samples, 0.04%)</title><rect x="306.0" y="181" width="0.5" height="15.0" fill="rgb(205,202,25)" rx="2" ry="2" />
+<text  x="308.99" y="191.5" ></text>
+</g>
+<g >
+<title>__vstrfmon_l_internal (463,750,000 samples, 77.55%)</title><rect x="273.9" y="517" width="915.1" height="15.0" fill="rgb(220,102,19)" rx="2" ry="2" />
+<text  x="276.92" y="527.5" >__vstrfmon_l_internal</text>
+</g>
+<g >
+<title>std::pair&lt;long, unsigned long&gt; const* std::lower_bound&lt;std::pair&lt;long, unsigned long&gt; const*, std::pair&lt;long, unsigned long&gt;, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyNodeIDPairComparator&gt; (250,000 samples, 0.04%)</title><rect x="86.5" y="165" width="0.5" height="15.0" fill="rgb(250,111,25)" rx="2" ry="2" />
+<text  x="89.46" y="175.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;long, long&gt;::pair&lt;long, true&gt; (750,000 samples, 0.13%)</title><rect x="258.6" y="181" width="1.5" height="15.0" fill="rgb(254,27,20)" rx="2" ry="2" />
+<text  x="261.63" y="191.5" ></text>
+</g>
+<g >
+<title>std::remove_reference&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllValuesOnLeaf (250,000 samples, 0.04%)</title><rect x="139.2" y="69" width="0.5" height="15.0" fill="rgb(217,173,14)" rx="2" ry="2" />
+<text  x="142.25" y="79.5" ></text>
+</g>
+<g >
+<title>int&amp; std::vector&lt;int, std::allocator&lt;int&gt; &gt;::emplace_back&lt;int&gt; (2,250,000 samples, 0.38%)</title><rect x="334.1" y="293" width="4.4" height="15.0" fill="rgb(208,224,18)" rx="2" ry="2" />
+<text  x="337.11" y="303.5" ></text>
+</g>
+<g >
+<title>__gnu_cxx::__normal_iterator&lt;int*, std::vector&lt;int, std::allocator&lt;int&gt; &gt; &gt;::operator- (250,000 samples, 0.04%)</title><rect x="331.6" y="293" width="0.5" height="15.0" fill="rgb(211,117,46)" rx="2" ry="2" />
+<text  x="334.64" y="303.5" ></text>
+</g>
+<g >
+<title>BwtreeTest_ConcurrentSkewedInsert_00_Test::TestBody (463,750,000 samples, 77.55%)</title><rect x="273.9" y="325" width="915.1" height="15.0" fill="rgb(235,157,54)" rx="2" ry="2" />
+<text  x="276.92" y="335.5" >BwtreeTest_ConcurrentSkewedInsert_00_Test::TestBody</text>
+</g>
+<g >
+<title>std::atomic&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode const*&gt;::load (2,750,000 samples, 0.46%)</title><rect x="90.4" y="165" width="5.4" height="15.0" fill="rgb(243,39,29)" rx="2" ry="2" />
+<text  x="93.41" y="175.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;long, std::allocator&lt;long&gt; &gt;::_S_max_size (500,000 samples, 0.08%)</title><rect x="286.3" y="197" width="0.9" height="15.0" fill="rgb(230,224,16)" rx="2" ry="2" />
+<text  x="289.25" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllSepsOnInner (1,500,000 samples, 0.25%)</title><rect x="99.8" y="149" width="2.9" height="15.0" fill="rgb(217,140,27)" rx="2" ry="2" />
+<text  x="102.78" y="159.5" ></text>
+</g>
+<g >
+<title>testing::TestInfo::Run (463,750,000 samples, 77.55%)</title><rect x="273.9" y="389" width="915.1" height="15.0" fill="rgb(205,172,39)" rx="2" ry="2" />
+<text  x="276.92" y="399.5" >testing::TestInfo::Run</text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetType (1,000,000 samples, 0.17%)</title><rect x="262.1" y="181" width="2.0" height="15.0" fill="rgb(216,3,20)" rx="2" ry="2" />
+<text  x="265.08" y="191.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;long, unsigned long&gt; const* std::upper_bound&lt;std::pair&lt;long, unsigned long&gt; const*, std::pair&lt;long, unsigned long&gt;, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyNodeIDPairComparator&gt; (12,250,000 samples, 2.05%)</title><rect x="178.2" y="181" width="24.2" height="15.0" fill="rgb(239,3,45)" rx="2" ry="2" />
+<text  x="181.22" y="191.5" >s..</text>
+</g>
+<g >
+<title>test::BwTreeTestUtil::KeyComparator::operator (1,500,000 samples, 0.25%)</title><rect x="192.5" y="117" width="3.0" height="15.0" fill="rgb(233,27,40)" rx="2" ry="2" />
+<text  x="195.53" y="127.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, long&gt; &gt;::End (250,000 samples, 0.04%)</title><rect x="282.3" y="261" width="0.5" height="15.0" fill="rgb(228,29,9)" rx="2" ry="2" />
+<text  x="285.31" y="271.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetHighKey (250,000 samples, 0.04%)</title><rect x="218.2" y="197" width="0.5" height="15.0" fill="rgb(210,60,54)" rx="2" ry="2" />
+<text  x="221.18" y="207.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hash_node_value_base&lt;long&gt;::_M_valptr (250,000 samples, 0.04%)</title><rect x="294.1" y="133" width="0.5" height="15.0" fill="rgb(216,222,16)" rx="2" ry="2" />
+<text  x="297.15" y="143.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;long, long&gt; const* std::__lower_bound&lt;std::pair&lt;long, long&gt; const*, std::pair&lt;long, long&gt;, __gnu_cxx::__ops::_Iter_comp_val&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairComparator&gt; &gt; (2,000,000 samples, 0.33%)</title><rect x="147.6" y="101" width="4.0" height="15.0" fill="rgb(225,224,50)" rx="2" ry="2" />
+<text  x="150.63" y="111.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hash_node&lt;long, false&gt;* std::__detail::_AllocNode&lt;std::allocator&lt;std::__detail::_Hash_node&lt;long, false&gt; &gt; &gt;::operator (1,750,000 samples, 0.29%)</title><rect x="305.5" y="213" width="3.4" height="15.0" fill="rgb(242,165,50)" rx="2" ry="2" />
+<text  x="308.49" y="223.5" ></text>
+</g>
+<g >
+<title>std::_Function_handler&lt;void  (129,500,000 samples, 21.66%)</title><rect x="10.0" y="389" width="255.5" height="15.0" fill="rgb(205,120,33)" rx="2" ry="2" />
+<text  x="13.00" y="399.5" >std::_Function_handler&lt;void </text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetType (250,000 samples, 0.04%)</title><rect x="281.8" y="261" width="0.5" height="15.0" fill="rgb(215,156,34)" rx="2" ry="2" />
+<text  x="284.81" y="271.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, long&gt; &gt;::ElasticNode (250,000 samples, 0.04%)</title><rect x="104.7" y="117" width="0.5" height="15.0" fill="rgb(209,73,47)" rx="2" ry="2" />
+<text  x="107.72" y="127.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::NodeSnapshot::IsLeaf (750,000 samples, 0.13%)</title><rect x="228.5" y="197" width="1.5" height="15.0" fill="rgb(232,137,33)" rx="2" ry="2" />
+<text  x="231.54" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::AllocationMeta::Allocate (2,250,000 samples, 0.38%)</title><rect x="25.8" y="213" width="4.4" height="15.0" fill="rgb(233,78,48)" rx="2" ry="2" />
+<text  x="28.79" y="223.5" ></text>
+</g>
+<g >
+<title>__gnu_cxx::__normal_iterator&lt;int*, std::vector&lt;int, std::allocator&lt;int&gt; &gt; &gt;::__normal_iterator (250,000 samples, 0.04%)</title><rect x="331.6" y="277" width="0.5" height="15.0" fill="rgb(213,25,30)" rx="2" ry="2" />
+<text  x="334.64" y="287.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;int, std::pair&lt;int const, int&gt;, std::allocator&lt;std::pair&lt;int const, int&gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;int&gt;, std::hash&lt;int&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, false, true&gt; &gt;::~_Hashtable (250,000 samples, 0.04%)</title><rect x="329.7" y="293" width="0.5" height="15.0" fill="rgb(248,217,50)" rx="2" ry="2" />
+<text  x="332.67" y="303.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InnerDataNode const** std::__copy_move_backward_a1&lt;false, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InnerDataNode const**, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InnerDataNode const**&gt; (250,000 samples, 0.04%)</title><rect x="101.3" y="69" width="0.5" height="15.0" fill="rgb(228,87,46)" rx="2" ry="2" />
+<text  x="104.26" y="79.5" ></text>
+</g>
+<g >
+<title>void bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllSepsOnInnerRecursive&lt;bwtree::SortedSmallSet&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InnerDataNode const*, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllSepsOnInner (1,250,000 samples, 0.21%)</title><rect x="100.3" y="133" width="2.4" height="15.0" fill="rgb(251,101,23)" rx="2" ry="2" />
+<text  x="103.28" y="143.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetNextNodeID (250,000 samples, 0.04%)</title><rect x="227.6" y="181" width="0.4" height="15.0" fill="rgb(221,213,48)" rx="2" ry="2" />
+<text  x="230.55" y="191.5" ></text>
+</g>
+<g >
+<title>xfg.12 (250,000 samples, 0.04%)</title><rect x="1188.5" y="293" width="0.5" height="15.0" fill="rgb(254,57,51)" rx="2" ry="2" />
+<text  x="1191.52" y="303.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyCmpEqual (250,000 samples, 0.04%)</title><rect x="62.8" y="213" width="0.5" height="15.0" fill="rgb(234,190,18)" rx="2" ry="2" />
+<text  x="65.78" y="223.5" ></text>
+</g>
+<g >
+<title>long const&amp; std::forward&lt;long const&amp;&gt; (250,000 samples, 0.04%)</title><rect x="202.9" y="165" width="0.5" height="15.0" fill="rgb(245,36,31)" rx="2" ry="2" />
+<text  x="205.88" y="175.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;int, std::pair&lt;int const, int&gt;, std::allocator&lt;std::pair&lt;int const, int&gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;int&gt;, std::hash&lt;int&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, false, true&gt; &gt;::_M_rehash (250,000 samples, 0.04%)</title><rect x="328.2" y="261" width="0.5" height="15.0" fill="rgb(251,134,25)" rx="2" ry="2" />
+<text  x="331.19" y="271.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::NodeSnapshot::IsLeaf (250,000 samples, 0.04%)</title><rect x="157.0" y="181" width="0.5" height="15.0" fill="rgb(229,72,10)" rx="2" ry="2" />
+<text  x="160.01" y="191.5" ></text>
+</g>
+<g >
+<title>std::iterator_traits&lt;std::pair&lt;long, long&gt; const*&gt;::difference_type std::__distance&lt;std::pair&lt;long, long&gt; const*&gt; (250,000 samples, 0.04%)</title><rect x="251.7" y="149" width="0.5" height="15.0" fill="rgb(242,217,45)" rx="2" ry="2" />
+<text  x="254.72" y="159.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::IsOnLeafDeltaChain (250,000 samples, 0.04%)</title><rect x="229.5" y="181" width="0.5" height="15.0" fill="rgb(209,185,7)" rx="2" ry="2" />
+<text  x="232.52" y="191.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, long&gt; &gt;::Begin (250,000 samples, 0.04%)</title><rect x="316.3" y="213" width="0.5" height="15.0" fill="rgb(207,3,24)" rx="2" ry="2" />
+<text  x="319.35" y="223.5" ></text>
+</g>
+<g >
+<title>void std::__advance&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const**, long&gt; (250,000 samples, 0.04%)</title><rect x="146.2" y="53" width="0.4" height="15.0" fill="rgb(228,59,0)" rx="2" ry="2" />
+<text  x="149.15" y="63.5" ></text>
+</g>
+<g >
+<title>std::enable_if&lt;std::__is_bitwise_relocatable&lt;long, void&gt;::value, long*&gt;::type std::__relocate_a_1&lt;long, long&gt; (250,000 samples, 0.04%)</title><rect x="287.7" y="181" width="0.5" height="15.0" fill="rgb(229,199,19)" rx="2" ry="2" />
+<text  x="290.73" y="191.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hashtable_alloc&lt;std::allocator&lt;std::__detail::_Hash_node&lt;long, false&gt; &gt; &gt;::_M_deallocate_node_ptr (500,000 samples, 0.08%)</title><rect x="330.7" y="229" width="0.9" height="15.0" fill="rgb(216,155,17)" rx="2" ry="2" />
+<text  x="333.65" y="239.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetType (500,000 samples, 0.08%)</title><rect x="98.8" y="165" width="1.0" height="15.0" fill="rgb(205,132,46)" rx="2" ry="2" />
+<text  x="101.80" y="175.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;long, long&gt; const* std::__lower_bound&lt;std::pair&lt;long, long&gt; const*, std::pair&lt;long, long&gt;, __gnu_cxx::__ops::_Iter_comp_val&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairComparator&gt; &gt; (9,750,000 samples, 1.63%)</title><rect x="237.4" y="181" width="19.3" height="15.0" fill="rgb(224,154,41)" rx="2" ry="2" />
+<text  x="240.42" y="191.5" ></text>
+</g>
+<g >
+<title>void std::advance&lt;std::pair&lt;long, unsigned long&gt; const*, long&gt; (250,000 samples, 0.04%)</title><rect x="86.5" y="133" width="0.5" height="15.0" fill="rgb(227,170,28)" rx="2" ry="2" />
+<text  x="89.46" y="143.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, long&gt; &gt;::GetAllocationHeader (500,000 samples, 0.08%)</title><rect x="30.2" y="213" width="1.0" height="15.0" fill="rgb(250,135,16)" rx="2" ry="2" />
+<text  x="33.23" y="223.5" ></text>
+</g>
+<g >
+<title>std::iterator_traits&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const**&gt;::iterator_category std::__iterator_category&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const**&gt; (250,000 samples, 0.04%)</title><rect x="145.2" y="69" width="0.5" height="15.0" fill="rgb(241,6,40)" rx="2" ry="2" />
+<text  x="148.17" y="79.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, long&gt; &gt;::InlineAllocate (3,750,000 samples, 0.63%)</title><rect x="24.3" y="229" width="7.4" height="15.0" fill="rgb(240,40,10)" rx="2" ry="2" />
+<text  x="27.31" y="239.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;std::__detail::_Node_iterator&lt;long, true, false&gt;, bool&gt; std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::_M_insert&lt;long const&amp;, std::__detail::_AllocNode&lt;std::allocator&lt;std::__detail::_Hash_node&lt;long, false&gt; &gt; &gt; &gt; (9,750,000 samples, 1.63%)</title><rect x="290.2" y="229" width="19.2" height="15.0" fill="rgb(222,137,43)" rx="2" ry="2" />
+<text  x="293.20" y="239.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hash_node&lt;long, false&gt;* std::addressof&lt;std::__detail::_Hash_node&lt;long, false&gt; &gt; (250,000 samples, 0.04%)</title><rect x="331.1" y="197" width="0.5" height="15.0" fill="rgb(226,181,10)" rx="2" ry="2" />
+<text  x="334.15" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, long&gt; &gt;::Get (500,000 samples, 0.08%)</title><rect x="104.2" y="133" width="1.0" height="15.0" fill="rgb(240,82,49)" rx="2" ry="2" />
+<text  x="107.22" y="143.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::NavigateLeafNode (24,500,000 samples, 4.10%)</title><rect x="212.3" y="213" width="48.3" height="15.0" fill="rgb(254,35,46)" rx="2" ry="2" />
+<text  x="215.26" y="223.5" >bwtr..</text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::NodeSnapshot::IsLeaf (1,000,000 samples, 0.17%)</title><rect x="208.3" y="197" width="2.0" height="15.0" fill="rgb(249,122,47)" rx="2" ry="2" />
+<text  x="211.31" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::IsOnLeafDeltaChain (250,000 samples, 0.04%)</title><rect x="105.7" y="117" width="0.5" height="15.0" fill="rgb(244,39,12)" rx="2" ry="2" />
+<text  x="108.70" y="127.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::PostInnerInsertNode (250,000 samples, 0.04%)</title><rect x="87.0" y="181" width="0.4" height="15.0" fill="rgb(227,130,53)" rx="2" ry="2" />
+<text  x="89.96" y="191.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InvalidateNodeID (250,000 samples, 0.04%)</title><rect x="313.9" y="245" width="0.5" height="15.0" fill="rgb(226,159,52)" rx="2" ry="2" />
+<text  x="316.88" y="255.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::TraverseReadOptimized (6,750,000 samples, 1.13%)</title><rect x="275.4" y="293" width="13.3" height="15.0" fill="rgb(226,152,8)" rx="2" ry="2" />
+<text  x="278.40" y="303.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyCmpLess (250,000 samples, 0.04%)</title><rect x="277.9" y="229" width="0.5" height="15.0" fill="rgb(221,11,5)" rx="2" ry="2" />
+<text  x="280.87" y="239.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;long, std::allocator&lt;long&gt; &gt;::max_size (750,000 samples, 0.13%)</title><rect x="285.8" y="213" width="1.4" height="15.0" fill="rgb(234,168,43)" rx="2" ry="2" />
+<text  x="288.76" y="223.5" ></text>
+</g>
+<g >
+<title>std::iterator_traits&lt;std::pair&lt;long, unsigned long&gt; const*&gt;::difference_type std::distance&lt;std::pair&lt;long, unsigned long&gt; const*&gt; (500,000 samples, 0.08%)</title><rect x="196.5" y="149" width="1.0" height="15.0" fill="rgb(214,9,54)" rx="2" ry="2" />
+<text  x="199.47" y="159.5" ></text>
+</g>
+<g >
+<title>std::thread::_State_impl&lt;std::thread::_Invoker&lt;std::tuple&lt;common::WorkerPool::AddThread (129,500,000 samples, 21.66%)</title><rect x="10.0" y="501" width="255.5" height="15.0" fill="rgb(234,108,26)" rx="2" ry="2" />
+<text  x="13.00" y="511.5" >std::thread::_State_impl&lt;std::thre..</text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;long&gt; &gt;::max_size (250,000 samples, 0.04%)</title><rect x="286.3" y="181" width="0.4" height="15.0" fill="rgb(254,130,21)" rx="2" ry="2" />
+<text  x="289.25" y="191.5" ></text>
+</g>
+<g >
+<title>bwtree::SortedSmallSet&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const*, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllValuesOnLeaf (250,000 samples, 0.04%)</title><rect x="106.2" y="133" width="0.5" height="15.0" fill="rgb(233,33,33)" rx="2" ry="2" />
+<text  x="109.20" y="143.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::NavigateLeafNode (4,750,000 samples, 0.79%)</title><rect x="278.9" y="277" width="9.3" height="15.0" fill="rgb(251,90,4)" rx="2" ry="2" />
+<text  x="281.85" y="287.5" ></text>
+</g>
+<g >
+<title>std::__cmpexch_failure_order (1,250,000 samples, 0.21%)</title><rect x="45.0" y="197" width="2.5" height="15.0" fill="rgb(227,225,50)" rx="2" ry="2" />
+<text  x="48.03" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetType (2,500,000 samples, 0.42%)</title><rect x="78.6" y="181" width="4.9" height="15.0" fill="rgb(208,21,39)" rx="2" ry="2" />
+<text  x="81.57" y="191.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InnerDataNode const** std::__copy_move_backward&lt;false, true, std::random_access_iterator_tag&gt;::__copy_move_b&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InnerDataNode const*&gt; (250,000 samples, 0.04%)</title><rect x="101.3" y="37" width="0.5" height="15.0" fill="rgb(208,99,15)" rx="2" ry="2" />
+<text  x="104.26" y="47.5" ></text>
+</g>
+<g >
+<title>__gnu_cxx::new_allocator&lt;long&gt;::_M_max_size (250,000 samples, 0.04%)</title><rect x="286.3" y="149" width="0.4" height="15.0" fill="rgb(236,105,18)" rx="2" ry="2" />
+<text  x="289.25" y="159.5" ></text>
+</g>
+<g >
+<title>std::__cxx11::basic_string&lt;char, std::char_traits&lt;char&gt;, std::allocator&lt;char&gt; &gt;::operator+= (250,000 samples, 0.04%)</title><rect x="1189.5" y="517" width="0.5" height="15.0" fill="rgb(252,183,33)" rx="2" ry="2" />
+<text  x="1192.51" y="527.5" ></text>
+</g>
+<g >
+<title>void std::__invoke_impl&lt;void, BwtreeTest_ConcurrentSkewedInsert_00_Test::TestBody (129,500,000 samples, 21.66%)</title><rect x="10.0" y="277" width="255.5" height="15.0" fill="rgb(206,153,54)" rx="2" ry="2" />
+<text  x="13.00" y="287.5" >void std::__invoke_impl&lt;void, Bwtr..</text>
+</g>
+<g >
+<title>testing::Test::Run (463,750,000 samples, 77.55%)</title><rect x="273.9" y="373" width="915.1" height="15.0" fill="rgb(223,181,2)" rx="2" ry="2" />
+<text  x="276.92" y="383.5" >testing::Test::Run</text>
+</g>
+<g >
+<title>unsigned long const&amp; std::min&lt;unsigned long&gt; (250,000 samples, 0.04%)</title><rect x="286.7" y="181" width="0.5" height="15.0" fill="rgb(243,77,49)" rx="2" ry="2" />
+<text  x="289.75" y="191.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::IsDeltaNode (1,250,000 samples, 0.21%)</title><rect x="71.2" y="181" width="2.4" height="15.0" fill="rgb(215,144,51)" rx="2" ry="2" />
+<text  x="74.17" y="191.5" ></text>
+</g>
+<g >
+<title>std::enable_if&lt;is_invocable_r_v&lt;void, test::MultiThreadTestUtil::RunThreadsUntilFinish (129,500,000 samples, 21.66%)</title><rect x="10.0" y="373" width="255.5" height="15.0" fill="rgb(221,224,14)" rx="2" ry="2" />
+<text  x="13.00" y="383.5" >std::enable_if&lt;is_invocable_r_v&lt;vo..</text>
+</g>
+<g >
+<title>std::_Hashtable&lt;int, std::pair&lt;int const, int&gt;, std::allocator&lt;std::pair&lt;int const, int&gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;int&gt;, std::hash&lt;int&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, false, true&gt; &gt;::clear (250,000 samples, 0.04%)</title><rect x="329.7" y="277" width="0.5" height="15.0" fill="rgb(216,81,1)" rx="2" ry="2" />
+<text  x="332.67" y="287.5" ></text>
+</g>
+<g >
+<title>std::unordered_map&lt;int, int, std::hash&lt;int&gt;, std::equal_to&lt;int&gt;, std::allocator&lt;std::pair&lt;int const, int&gt; &gt; &gt;::~unordered_map (250,000 samples, 0.04%)</title><rect x="329.7" y="309" width="0.5" height="15.0" fill="rgb(230,214,44)" rx="2" ry="2" />
+<text  x="332.67" y="319.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;long, unsigned long&gt;::pair&lt;unsigned long, true&gt; (250,000 samples, 0.04%)</title><rect x="203.4" y="165" width="0.5" height="15.0" fill="rgb(230,81,0)" rx="2" ry="2" />
+<text  x="206.38" y="175.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::EpochManager::JoinEpoch (250,000 samples, 0.04%)</title><rect x="274.9" y="293" width="0.5" height="15.0" fill="rgb(248,22,14)" rx="2" ry="2" />
+<text  x="277.91" y="303.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::~_Hashtable (750,000 samples, 0.13%)</title><rect x="330.2" y="293" width="1.4" height="15.0" fill="rgb(209,35,38)" rx="2" ry="2" />
+<text  x="333.16" y="303.5" ></text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::__detail::_Hash_node&lt;long, false&gt; &gt; &gt;::deallocate (250,000 samples, 0.04%)</title><rect x="330.7" y="213" width="0.4" height="15.0" fill="rgb(233,4,42)" rx="2" ry="2" />
+<text  x="333.65" y="223.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;std::__detail::_Node_iterator&lt;long, true, false&gt;, bool&gt;::pair&lt;std::__detail::_Node_iterator&lt;long, true, false&gt;&amp;, bool, true&gt; (250,000 samples, 0.04%)</title><rect x="308.9" y="213" width="0.5" height="15.0" fill="rgb(236,206,17)" rx="2" ry="2" />
+<text  x="311.95" y="223.5" ></text>
+</g>
+<g >
+<title>__gnu_cxx::__ops::_Val_comp_iter&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyNodeIDPairComparator&gt; __gnu_cxx::__ops::__val_comp_iter&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyNodeIDPairComparator&gt; (1,000,000 samples, 0.17%)</title><rect x="178.2" y="165" width="2.0" height="15.0" fill="rgb(224,185,39)" rx="2" ry="2" />
+<text  x="181.22" y="175.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;int, std::pair&lt;int const, int&gt;, std::allocator&lt;std::pair&lt;int const, int&gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;int&gt;, std::hash&lt;int&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, false, true&gt; &gt;::_M_insert_unique_node (250,000 samples, 0.04%)</title><rect x="328.2" y="277" width="0.5" height="15.0" fill="rgb(216,43,52)" rx="2" ry="2" />
+<text  x="331.19" y="287.5" ></text>
+</g>
+<g >
+<title>void std::__advance&lt;std::pair&lt;long, long&gt; const*, long&gt; (1,750,000 samples, 0.29%)</title><rect x="253.2" y="149" width="3.5" height="15.0" fill="rgb(240,228,4)" rx="2" ry="2" />
+<text  x="256.20" y="159.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ConsolidateLeafNode (250,000 samples, 0.04%)</title><rect x="87.0" y="149" width="0.4" height="15.0" fill="rgb(229,26,27)" rx="2" ry="2" />
+<text  x="89.96" y="159.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::NodeSnapshot::IsLeaf (1,500,000 samples, 0.25%)</title><rect x="261.1" y="213" width="3.0" height="15.0" fill="rgb(234,91,54)" rx="2" ry="2" />
+<text  x="264.10" y="223.5" ></text>
+</g>
+<g >
+<title>bool __gnu_cxx::__ops::_Val_comp_iter&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllValuesOnLeaf (500,000 samples, 0.08%)</title><rect x="139.7" y="85" width="1.0" height="15.0" fill="rgb(223,99,14)" rx="2" ry="2" />
+<text  x="142.74" y="95.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ConsolidateNode (28,500,000 samples, 4.77%)</title><rect x="99.8" y="181" width="56.2" height="15.0" fill="rgb(245,159,39)" rx="2" ry="2" />
+<text  x="102.78" y="191.5" >bwtre..</text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LoadNodeID (48,000,000 samples, 8.03%)</title><rect x="63.3" y="213" width="94.7" height="15.0" fill="rgb(238,61,13)" rx="2" ry="2" />
+<text  x="66.28" y="223.5" >bwtree::BwT..</text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairComparator::operator (1,250,000 samples, 0.21%)</title><rect x="149.1" y="69" width="2.5" height="15.0" fill="rgb(226,154,43)" rx="2" ry="2" />
+<text  x="152.11" y="79.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::_M_rehash (1,500,000 samples, 0.25%)</title><rect x="298.6" y="197" width="2.9" height="15.0" fill="rgb(249,56,52)" rx="2" ry="2" />
+<text  x="301.59" y="207.5" ></text>
+</g>
+<g >
+<title>RUN_ALL_TESTS (463,750,000 samples, 77.55%)</title><rect x="273.9" y="485" width="915.1" height="15.0" fill="rgb(220,47,34)" rx="2" ry="2" />
+<text  x="276.92" y="495.5" >RUN_ALL_TESTS</text>
+</g>
+<g >
+<title>std::operator&amp; (250,000 samples, 0.04%)</title><rect x="95.3" y="149" width="0.5" height="15.0" fill="rgb(226,68,21)" rx="2" ry="2" />
+<text  x="98.34" y="159.5" ></text>
+</g>
+<g >
+<title>std::unordered_set&lt;long, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::allocator&lt;long&gt; &gt;::unordered_set&lt;__gnu_cxx::__normal_iterator&lt;long*, std::vector&lt;long, std::allocator&lt;long&gt; &gt; &gt; &gt; (10,500,000 samples, 1.76%)</title><rect x="288.7" y="293" width="20.7" height="15.0" fill="rgb(206,170,4)" rx="2" ry="2" />
+<text  x="291.72" y="303.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hashtable_alloc&lt;std::allocator&lt;std::__detail::_Hash_node&lt;std::pair&lt;int const, int&gt;, false&gt; &gt; &gt;::_M_deallocate_nodes (250,000 samples, 0.04%)</title><rect x="329.7" y="261" width="0.5" height="15.0" fill="rgb(228,217,43)" rx="2" ry="2" />
+<text  x="332.67" y="271.5" ></text>
+</g>
+<g >
+<title>bool testing::internal::HandleExceptionsInMethodIfSupported&lt;testing::internal::UnitTestImpl, bool&gt; (463,750,000 samples, 77.55%)</title><rect x="273.9" y="453" width="915.1" height="15.0" fill="rgb(219,130,33)" rx="2" ry="2" />
+<text  x="276.92" y="463.5" >bool testing::internal::HandleExceptionsInMethodIfSupported&lt;testing::internal::UnitTestImpl, bool&gt;</text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::NodeSnapshot::IsLeaf (250,000 samples, 0.04%)</title><rect x="288.2" y="277" width="0.5" height="15.0" fill="rgb(248,132,11)" rx="2" ry="2" />
+<text  x="291.23" y="287.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::NavigateSiblingChain (750,000 samples, 0.13%)</title><rect x="276.9" y="261" width="1.5" height="15.0" fill="rgb(254,15,23)" rx="2" ry="2" />
+<text  x="279.88" y="271.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ConsolidateLeafNode (26,750,000 samples, 4.47%)</title><rect x="102.7" y="165" width="52.8" height="15.0" fill="rgb(228,215,4)" rx="2" ry="2" />
+<text  x="105.74" y="175.5" >bwtre..</text>
+</g>
+<g >
+<title>std::__detail::_Hash_node_value_base&lt;long&gt;::_M_v (250,000 samples, 0.04%)</title><rect x="300.6" y="149" width="0.5" height="15.0" fill="rgb(232,23,25)" rx="2" ry="2" />
+<text  x="303.56" y="159.5" ></text>
+</g>
+<g >
+<title>void testing::internal::HandleSehExceptionsInMethodIfSupported&lt;testing::Test, void&gt; (463,750,000 samples, 77.55%)</title><rect x="273.9" y="341" width="915.1" height="15.0" fill="rgb(247,20,23)" rx="2" ry="2" />
+<text  x="276.92" y="351.5" >void testing::internal::HandleSehExceptionsInMethodIfSupported&lt;testing::Test, void&gt;</text>
+</g>
+<g >
+<title>std::__cmpexch_failure_order (250,000 samples, 0.04%)</title><rect x="44.0" y="197" width="0.5" height="15.0" fill="rgb(250,156,12)" rx="2" ry="2" />
+<text  x="47.04" y="207.5" ></text>
+</g>
+<g >
+<title>long const&amp; std::forward&lt;long const&amp;&gt; (250,000 samples, 0.04%)</title><rect x="55.9" y="197" width="0.5" height="15.0" fill="rgb(253,69,28)" rx="2" ry="2" />
+<text  x="58.88" y="207.5" ></text>
+</g>
+<g >
+<title>void std::__advance&lt;std::pair&lt;long, unsigned long&gt; const*, long&gt; (250,000 samples, 0.04%)</title><rect x="86.5" y="117" width="0.5" height="15.0" fill="rgb(231,69,40)" rx="2" ry="2" />
+<text  x="89.46" y="127.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Node_iterator&lt;long, true, false&gt;::_Node_iterator (500,000 samples, 0.08%)</title><rect x="301.5" y="197" width="1.0" height="15.0" fill="rgb(246,11,31)" rx="2" ry="2" />
+<text  x="304.55" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllValuesOnLeaf (24,500,000 samples, 4.10%)</title><rect x="103.2" y="149" width="48.4" height="15.0" fill="rgb(224,17,35)" rx="2" ry="2" />
+<text  x="106.24" y="159.5" >bwtr..</text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::Context::Context (1,250,000 samples, 0.21%)</title><rect x="21.8" y="229" width="2.5" height="15.0" fill="rgb(230,113,31)" rx="2" ry="2" />
+<text  x="24.84" y="239.5" ></text>
+</g>
+<g >
+<title>main (463,750,000 samples, 77.55%)</title><rect x="273.9" y="501" width="915.1" height="15.0" fill="rgb(221,104,10)" rx="2" ry="2" />
+<text  x="276.92" y="511.5" >main</text>
+</g>
+<g >
+<title>std::remove_reference&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairComparator&amp;&gt;::type&amp;&amp; std::move&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairComparator&amp;&gt; (250,000 samples, 0.04%)</title><rect x="256.7" y="181" width="0.4" height="15.0" fill="rgb(251,7,12)" rx="2" ry="2" />
+<text  x="259.66" y="191.5" ></text>
+</g>
+<g >
+<title>std::remove_reference&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyNodeIDPairComparator&amp;&gt;::type&amp;&amp; std::move&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyNodeIDPairComparator&amp;&gt; (250,000 samples, 0.04%)</title><rect x="179.7" y="133" width="0.5" height="15.0" fill="rgb(228,27,46)" rx="2" ry="2" />
+<text  x="182.70" y="143.5" ></text>
+</g>
+<g >
+<title>bool __gnu_cxx::__ops::_Iter_comp_val&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairComparator&gt;::operator (250,000 samples, 0.04%)</title><rect x="235.9" y="181" width="0.5" height="15.0" fill="rgb(239,129,41)" rx="2" ry="2" />
+<text  x="238.94" y="191.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyCmpGreaterEqual (2,250,000 samples, 0.38%)</title><rect x="171.3" y="197" width="4.5" height="15.0" fill="rgb(227,90,28)" rx="2" ry="2" />
+<text  x="174.31" y="207.5" ></text>
+</g>
+<g >
+<title>std::function&lt;void  (129,500,000 samples, 21.66%)</title><rect x="10.0" y="405" width="255.5" height="15.0" fill="rgb(233,157,54)" rx="2" ry="2" />
+<text  x="13.00" y="415.5" >std::function&lt;void </text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const** std::__niter_base&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const**&gt; (250,000 samples, 0.04%)</title><rect x="137.3" y="85" width="0.5" height="15.0" fill="rgb(218,190,31)" rx="2" ry="2" />
+<text  x="140.27" y="95.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyCmpLess (250,000 samples, 0.04%)</title><rect x="228.0" y="165" width="0.5" height="15.0" fill="rgb(205,35,31)" rx="2" ry="2" />
+<text  x="231.04" y="175.5" ></text>
+</g>
+<g >
+<title>__gnu_cxx::new_allocator&lt;std::__detail::_Hash_node&lt;long, false&gt; &gt;::allocate (250,000 samples, 0.04%)</title><rect x="308.5" y="165" width="0.4" height="15.0" fill="rgb(234,2,29)" rx="2" ry="2" />
+<text  x="311.45" y="175.5" ></text>
+</g>
+<g >
+<title>void bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllValuesOnLeafRecursive&lt;bwtree::SortedSmallSet&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const*, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllValuesOnLeaf (250,000 samples, 0.04%)</title><rect x="87.0" y="117" width="0.4" height="15.0" fill="rgb(206,178,47)" rx="2" ry="2" />
+<text  x="89.96" y="127.5" ></text>
+</g>
+<g >
+<title>util::Zipf::Generate (401,250,000 samples, 67.10%)</title><rect x="396.8" y="293" width="791.7" height="15.0" fill="rgb(230,38,4)" rx="2" ry="2" />
+<text  x="399.76" y="303.5" >util::Zipf::Generate</text>
+</g>
+<g >
+<title>std::__detail::_Hash_node_value_base&lt;long&gt;::_M_valptr (250,000 samples, 0.04%)</title><rect x="294.6" y="149" width="0.5" height="15.0" fill="rgb(208,168,48)" rx="2" ry="2" />
+<text  x="297.64" y="159.5" ></text>
+</g>
+<g >
+<title>void std::advance&lt;std::pair&lt;long, unsigned long&gt; const*, long&gt; (2,250,000 samples, 0.38%)</title><rect x="198.0" y="149" width="4.4" height="15.0" fill="rgb(244,147,46)" rx="2" ry="2" />
+<text  x="200.95" y="159.5" ></text>
+</g>
+<g >
+<title>std::equal_to&lt;long&gt;::operator (250,000 samples, 0.04%)</title><rect x="295.1" y="165" width="0.5" height="15.0" fill="rgb(222,124,28)" rx="2" ry="2" />
+<text  x="298.13" y="175.5" ></text>
+</g>
+<g >
+<title>dl_main (250,000 samples, 0.04%)</title><rect x="267.5" y="485" width="0.5" height="15.0" fill="rgb(219,218,45)" rx="2" ry="2" />
+<text  x="270.51" y="495.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetHighKeyPair (250,000 samples, 0.04%)</title><rect x="51.4" y="213" width="0.5" height="15.0" fill="rgb(243,11,31)" rx="2" ry="2" />
+<text  x="54.44" y="223.5" ></text>
+</g>
+<g >
+<title>__gnu_cxx::__ops::_Val_comp_iter&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyNodeIDPairComparator&gt;::_Val_comp_iter (750,000 samples, 0.13%)</title><rect x="178.7" y="149" width="1.5" height="15.0" fill="rgb(229,116,41)" rx="2" ry="2" />
+<text  x="181.71" y="159.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairHashFunc::operator (500,000 samples, 0.08%)</title><rect x="115.6" y="85" width="1.0" height="15.0" fill="rgb(216,120,29)" rx="2" ry="2" />
+<text  x="118.57" y="95.5" ></text>
+</g>
+<g >
+<title>std::mutex::unlock (250,000 samples, 0.04%)</title><rect x="313.9" y="229" width="0.5" height="15.0" fill="rgb(236,103,38)" rx="2" ry="2" />
+<text  x="316.88" y="239.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::EpochManager::ClearEpoch (6,000,000 samples, 1.00%)</title><rect x="309.4" y="277" width="11.9" height="15.0" fill="rgb(232,102,6)" rx="2" ry="2" />
+<text  x="312.44" y="287.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::EpochManager::AddGarbageNode (750,000 samples, 0.13%)</title><rect x="151.6" y="149" width="1.5" height="15.0" fill="rgb(234,183,15)" rx="2" ry="2" />
+<text  x="154.58" y="159.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, long&gt; &gt;::End (1,250,000 samples, 0.21%)</title><rect x="220.2" y="197" width="2.4" height="15.0" fill="rgb(212,119,16)" rx="2" ry="2" />
+<text  x="223.15" y="207.5" ></text>
+</g>
+<g >
+<title>long const&amp; std::forward&lt;long const&amp;&gt; (250,000 samples, 0.04%)</title><rect x="257.6" y="181" width="0.5" height="15.0" fill="rgb(249,70,44)" rx="2" ry="2" />
+<text  x="260.64" y="191.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;int, std::pair&lt;int const, int&gt;, std::allocator&lt;std::pair&lt;int const, int&gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;int&gt;, std::hash&lt;int&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, false, true&gt; &gt;::_M_rehash_aux (250,000 samples, 0.04%)</title><rect x="328.2" y="245" width="0.5" height="15.0" fill="rgb(234,152,50)" rx="2" ry="2" />
+<text  x="331.19" y="255.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hash_node_value_base&lt;long&gt;::_M_valptr (750,000 samples, 0.13%)</title><rect x="296.1" y="133" width="1.5" height="15.0" fill="rgb(230,42,44)" rx="2" ry="2" />
+<text  x="299.12" y="143.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const** std::__copy_move_backward&lt;false, true, std::random_access_iterator_tag&gt;::__copy_move_b&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const*&gt; (250,000 samples, 0.04%)</title><rect x="136.3" y="37" width="0.5" height="15.0" fill="rgb(229,132,33)" rx="2" ry="2" />
+<text  x="139.29" y="47.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairComparator::operator (3,250,000 samples, 0.54%)</title><rect x="245.3" y="149" width="6.4" height="15.0" fill="rgb(225,31,16)" rx="2" ry="2" />
+<text  x="248.31" y="159.5" ></text>
+</g>
+<g >
+<title>std::atomic&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::EpochManager::GarbageNode*&gt;::compare_exchange_strong (500,000 samples, 0.08%)</title><rect x="152.1" y="133" width="1.0" height="15.0" fill="rgb(210,106,40)" rx="2" ry="2" />
+<text  x="155.07" y="143.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllSepsOnInner (250,000 samples, 0.04%)</title><rect x="100.8" y="101" width="0.5" height="15.0" fill="rgb(208,167,12)" rx="2" ry="2" />
+<text  x="103.77" y="111.5" ></text>
+</g>
+<g >
+<title>[libstdc++.so.6.0.30] (129,500,000 samples, 21.66%)</title><rect x="10.0" y="517" width="255.5" height="15.0" fill="rgb(236,208,1)" rx="2" ry="2" />
+<text  x="13.00" y="527.5" >[libstdc++.so.6.0.30]</text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::NavigateSiblingChain (250,000 samples, 0.04%)</title><rect x="260.6" y="213" width="0.5" height="15.0" fill="rgb(209,134,42)" rx="2" ry="2" />
+<text  x="263.60" y="223.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;int, std::allocator&lt;int&gt; &gt;::back (1,000,000 samples, 0.17%)</title><rect x="334.6" y="277" width="2.0" height="15.0" fill="rgb(247,148,32)" rx="2" ry="2" />
+<text  x="337.60" y="287.5" ></text>
+</g>
+<g >
+<title>bwtree::BloomFilter&lt;std::pair&lt;long, long&gt;, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairEqualityChecker, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairHashFunc&gt;::__InsertScalar (250,000 samples, 0.04%)</title><rect x="116.6" y="117" width="0.4" height="15.0" fill="rgb(253,75,29)" rx="2" ry="2" />
+<text  x="119.56" y="127.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;int, std::pair&lt;int const, int&gt;, std::allocator&lt;std::pair&lt;int const, int&gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;int&gt;, std::hash&lt;int&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, false, true&gt; &gt;::_M_find_node (2,250,000 samples, 0.38%)</title><rect x="323.7" y="277" width="4.5" height="15.0" fill="rgb(239,76,3)" rx="2" ry="2" />
+<text  x="326.75" y="287.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::DeltaNode::DeltaNode (750,000 samples, 0.13%)</title><rect x="52.9" y="197" width="1.5" height="15.0" fill="rgb(231,197,5)" rx="2" ry="2" />
+<text  x="55.92" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::FreeNodeByNodeID (250,000 samples, 0.04%)</title><rect x="321.3" y="261" width="0.5" height="15.0" fill="rgb(207,38,51)" rx="2" ry="2" />
+<text  x="324.28" y="271.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::GetLatestNodeSnapshot (750,000 samples, 0.13%)</title><rect x="61.3" y="213" width="1.5" height="15.0" fill="rgb(229,229,42)" rx="2" ry="2" />
+<text  x="64.30" y="223.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::_Hashtable&lt;__gnu_cxx::__normal_iterator&lt;long*, std::vector&lt;long, std::allocator&lt;long&gt; &gt; &gt; &gt; (10,500,000 samples, 1.76%)</title><rect x="288.7" y="261" width="20.7" height="15.0" fill="rgb(228,61,43)" rx="2" ry="2" />
+<text  x="291.72" y="271.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InstallNodeToReplace (1,250,000 samples, 0.21%)</title><rect x="153.1" y="149" width="2.4" height="15.0" fill="rgb(242,30,27)" rx="2" ry="2" />
+<text  x="156.06" y="159.5" ></text>
+</g>
+<g >
+<title>operator new (250,000 samples, 0.04%)</title><rect x="305.5" y="181" width="0.5" height="15.0" fill="rgb(219,74,12)" rx="2" ry="2" />
+<text  x="308.49" y="191.5" ></text>
+</g>
+<g >
+<title>common::WorkerPool::AddThread (129,500,000 samples, 21.66%)</title><rect x="10.0" y="421" width="255.5" height="15.0" fill="rgb(240,117,39)" rx="2" ry="2" />
+<text  x="13.00" y="431.5" >common::WorkerPool::AddThread</text>
+</g>
+<g >
+<title>__gnu_cxx::__aligned_buffer&lt;long&gt;::_M_ptr (500,000 samples, 0.08%)</title><rect x="296.6" y="117" width="1.0" height="15.0" fill="rgb(236,165,50)" rx="2" ry="2" />
+<text  x="299.61" y="127.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetType (250,000 samples, 0.04%)</title><rect x="105.7" y="101" width="0.5" height="15.0" fill="rgb(218,186,18)" rx="2" ry="2" />
+<text  x="108.70" y="111.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, long&gt; &gt;::PushBack (250,000 samples, 0.04%)</title><rect x="87.0" y="101" width="0.4" height="15.0" fill="rgb(233,190,36)" rx="2" ry="2" />
+<text  x="89.96" y="111.5" ></text>
+</g>
+<g >
+<title>test::BwTreeTestUtil::KeyComparator::operator (750,000 samples, 0.13%)</title><rect x="250.2" y="133" width="1.5" height="15.0" fill="rgb(216,184,3)" rx="2" ry="2" />
+<text  x="253.24" y="143.5" ></text>
+</g>
+<g >
+<title>void std::allocator_traits&lt;std::allocator&lt;long&gt; &gt;::construct&lt;long, long const&amp;&gt; (500,000 samples, 0.08%)</title><rect x="284.8" y="245" width="1.0" height="15.0" fill="rgb(233,117,8)" rx="2" ry="2" />
+<text  x="287.77" y="255.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::FreeNodeByPointer (250,000 samples, 0.04%)</title><rect x="321.3" y="245" width="0.5" height="15.0" fill="rgb(211,196,45)" rx="2" ry="2" />
+<text  x="324.28" y="255.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;long, std::allocator&lt;long&gt; &gt;::push_back (2,000,000 samples, 0.33%)</title><rect x="284.3" y="261" width="3.9" height="15.0" fill="rgb(223,46,1)" rx="2" ry="2" />
+<text  x="287.28" y="271.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyCmpGreaterEqual (250,000 samples, 0.04%)</title><rect x="283.8" y="245" width="0.5" height="15.0" fill="rgb(226,48,19)" rx="2" ry="2" />
+<text  x="286.79" y="255.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafNode::GetSplitSibling (250,000 samples, 0.04%)</title><rect x="74.1" y="181" width="0.5" height="15.0" fill="rgb(212,100,11)" rx="2" ry="2" />
+<text  x="77.13" y="191.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Mod_range_hashing::operator (250,000 samples, 0.04%)</title><rect x="292.7" y="181" width="0.5" height="15.0" fill="rgb(239,78,31)" rx="2" ry="2" />
+<text  x="295.67" y="191.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;long, unsigned long&gt; const* std::__upper_bound&lt;std::pair&lt;long, unsigned long&gt; const*, std::pair&lt;long, unsigned long&gt;, __gnu_cxx::__ops::_Val_comp_iter&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyNodeIDPairComparator&gt; &gt; (11,250,000 samples, 1.88%)</title><rect x="180.2" y="165" width="22.2" height="15.0" fill="rgb(224,17,23)" rx="2" ry="2" />
+<text  x="183.19" y="175.5" >s..</text>
+</g>
+<g >
+<title>std::atomic&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode const*&gt;::compare_exchange_strong (4,250,000 samples, 0.71%)</title><rect x="41.6" y="213" width="8.4" height="15.0" fill="rgb(241,82,44)" rx="2" ry="2" />
+<text  x="44.57" y="223.5" ></text>
+</g>
+<g >
+<title>std::__cmpexch_failure_order2 (250,000 samples, 0.04%)</title><rect x="44.5" y="197" width="0.5" height="15.0" fill="rgb(220,152,17)" rx="2" ry="2" />
+<text  x="47.53" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::FreeNodeByNodeID (250,000 samples, 0.04%)</title><rect x="321.3" y="293" width="0.5" height="15.0" fill="rgb(206,9,28)" rx="2" ry="2" />
+<text  x="324.28" y="303.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InnerDataNode const** std::copy_backward&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InnerDataNode const**, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InnerDataNode const**&gt; (250,000 samples, 0.04%)</title><rect x="101.3" y="101" width="0.5" height="15.0" fill="rgb(217,11,52)" rx="2" ry="2" />
+<text  x="104.26" y="111.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetType (1,000,000 samples, 0.17%)</title><rect x="311.9" y="245" width="2.0" height="15.0" fill="rgb(207,63,24)" rx="2" ry="2" />
+<text  x="314.91" y="255.5" ></text>
+</g>
+<g >
+<title>std::hash&lt;long&gt;::operator (250,000 samples, 0.04%)</title><rect x="280.8" y="229" width="0.5" height="15.0" fill="rgb(225,79,10)" rx="2" ry="2" />
+<text  x="283.83" y="239.5" ></text>
+</g>
+<g >
+<title>std::hash&lt;long&gt;::operator (500,000 samples, 0.08%)</title><rect x="115.6" y="69" width="1.0" height="15.0" fill="rgb(253,111,34)" rx="2" ry="2" />
+<text  x="118.57" y="79.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, long&gt; &gt;::End (2,250,000 samples, 0.38%)</title><rect x="316.8" y="213" width="4.5" height="15.0" fill="rgb(239,77,39)" rx="2" ry="2" />
+<text  x="319.84" y="223.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::_Hashtable&lt;__gnu_cxx::__normal_iterator&lt;long*, std::vector&lt;long, std::allocator&lt;long&gt; &gt; &gt; &gt; (10,500,000 samples, 1.76%)</title><rect x="288.7" y="277" width="20.7" height="15.0" fill="rgb(209,130,25)" rx="2" ry="2" />
+<text  x="291.72" y="287.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const** std::__niter_wrap&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const**&gt; (250,000 samples, 0.04%)</title><rect x="136.8" y="69" width="0.5" height="15.0" fill="rgb(245,120,7)" rx="2" ry="2" />
+<text  x="139.78" y="79.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hashtable_base&lt;int, std::pair&lt;int const, int&gt;, std::__detail::_Select1st, std::equal_to&lt;int&gt;, std::hash&lt;int&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Hashtable_traits&lt;false, false, true&gt; &gt;::_M_equals (500,000 samples, 0.08%)</title><rect x="327.2" y="245" width="1.0" height="15.0" fill="rgb(253,133,32)" rx="2" ry="2" />
+<text  x="330.20" y="255.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hash_code_base&lt;int, std::pair&lt;int const, int&gt;, std::__detail::_Select1st, std::hash&lt;int&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, false&gt;::_M_bucket_index (250,000 samples, 0.04%)</title><rect x="328.2" y="229" width="0.5" height="15.0" fill="rgb(235,59,21)" rx="2" ry="2" />
+<text  x="331.19" y="239.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hash_code_base&lt;long, long, std::__detail::_Identity, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, false&gt;::_M_hash_code (250,000 samples, 0.04%)</title><rect x="295.6" y="149" width="0.5" height="15.0" fill="rgb(227,91,18)" rx="2" ry="2" />
+<text  x="298.63" y="159.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LocateSeparatorByKey (250,000 samples, 0.04%)</title><rect x="276.4" y="261" width="0.5" height="15.0" fill="rgb(237,55,36)" rx="2" ry="2" />
+<text  x="279.39" y="271.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetNextNodeID (500,000 samples, 0.08%)</title><rect x="206.8" y="181" width="1.0" height="15.0" fill="rgb(253,89,30)" rx="2" ry="2" />
+<text  x="209.83" y="191.5" ></text>
+</g>
+<g >
+<title>__gnu_cxx::__normal_iterator&lt;long*, std::vector&lt;long, std::allocator&lt;long&gt; &gt; &gt;::__normal_iterator (250,000 samples, 0.04%)</title><rect x="284.3" y="229" width="0.5" height="15.0" fill="rgb(229,166,54)" rx="2" ry="2" />
+<text  x="287.28" y="239.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, long&gt; &gt;::PushBack (2,750,000 samples, 0.46%)</title><rect x="124.0" y="101" width="5.4" height="15.0" fill="rgb(220,150,4)" rx="2" ry="2" />
+<text  x="126.95" y="111.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hashtable_alloc&lt;std::allocator&lt;std::__detail::_Hash_node&lt;long, false&gt; &gt; &gt;::_M_deallocate_nodes (750,000 samples, 0.13%)</title><rect x="330.2" y="261" width="1.4" height="15.0" fill="rgb(241,140,26)" rx="2" ry="2" />
+<text  x="333.16" y="271.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllValuesOnLeaf (750,000 samples, 0.13%)</title><rect x="143.2" y="53" width="1.5" height="15.0" fill="rgb(233,51,9)" rx="2" ry="2" />
+<text  x="146.19" y="63.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::EpochManager::FreeEpochDeltaChain (6,000,000 samples, 1.00%)</title><rect x="309.4" y="261" width="11.9" height="15.0" fill="rgb(209,69,7)" rx="2" ry="2" />
+<text  x="312.44" y="271.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Mod_range_hashing::operator (250,000 samples, 0.04%)</title><rect x="297.6" y="149" width="0.5" height="15.0" fill="rgb(231,63,2)" rx="2" ry="2" />
+<text  x="300.60" y="159.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;int, std::allocator&lt;int&gt; &gt;::back (1,250,000 samples, 0.21%)</title><rect x="331.6" y="309" width="2.5" height="15.0" fill="rgb(218,156,43)" rx="2" ry="2" />
+<text  x="334.64" y="319.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LoadNodeIDReadOptimized (250,000 samples, 0.04%)</title><rect x="275.9" y="277" width="0.5" height="15.0" fill="rgb(251,156,31)" rx="2" ry="2" />
+<text  x="278.89" y="287.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::_M_bucket_index (500,000 samples, 0.08%)</title><rect x="294.1" y="181" width="1.0" height="15.0" fill="rgb(205,36,43)" rx="2" ry="2" />
+<text  x="297.15" y="191.5" ></text>
+</g>
+<g >
+<title>__gnu_cxx::new_allocator&lt;long&gt;::max_size (250,000 samples, 0.04%)</title><rect x="286.3" y="165" width="0.4" height="15.0" fill="rgb(246,211,49)" rx="2" ry="2" />
+<text  x="289.25" y="175.5" ></text>
+</g>
+<g >
+<title>util::Distribution&lt; (430,500,000 samples, 71.99%)</title><rect x="339.5" y="309" width="849.5" height="15.0" fill="rgb(246,173,50)" rx="2" ry="2" />
+<text  x="342.53" y="319.5" >util::Distribution&lt;</text>
+</g>
+<g >
+<title>std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::_M_allocate_buckets (250,000 samples, 0.04%)</title><rect x="288.7" y="229" width="0.5" height="15.0" fill="rgb(237,100,5)" rx="2" ry="2" />
+<text  x="291.72" y="239.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hash_code_base&lt;long, long, std::__detail::_Identity, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, false&gt;::_M_hash_code (750,000 samples, 0.13%)</title><rect x="304.0" y="213" width="1.5" height="15.0" fill="rgb(252,22,40)" rx="2" ry="2" />
+<text  x="307.01" y="223.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::~BwTree (6,250,000 samples, 1.05%)</title><rect x="309.4" y="309" width="12.4" height="15.0" fill="rgb(212,115,31)" rx="2" ry="2" />
+<text  x="312.44" y="319.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;int, std::pair&lt;int const, int&gt;, std::allocator&lt;std::pair&lt;int const, int&gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;int&gt;, std::hash&lt;int&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, false, true&gt; &gt;::_M_bucket_index (250,000 samples, 0.04%)</title><rect x="323.3" y="277" width="0.4" height="15.0" fill="rgb(206,179,32)" rx="2" ry="2" />
+<text  x="326.25" y="287.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafSplitNode::LeafSplitNode (250,000 samples, 0.04%)</title><rect x="74.6" y="181" width="0.5" height="15.0" fill="rgb(217,127,23)" rx="2" ry="2" />
+<text  x="77.62" y="191.5" ></text>
+</g>
+<g >
+<title>operator new (500,000 samples, 0.08%)</title><rect x="284.8" y="213" width="1.0" height="15.0" fill="rgb(229,5,45)" rx="2" ry="2" />
+<text  x="287.77" y="223.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetHighKeyPair (250,000 samples, 0.04%)</title><rect x="99.8" y="133" width="0.5" height="15.0" fill="rgb(213,58,30)" rx="2" ry="2" />
+<text  x="102.78" y="143.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::AllocationMeta::TryAllocate (2,250,000 samples, 0.38%)</title><rect x="25.8" y="197" width="4.4" height="15.0" fill="rgb(208,127,29)" rx="2" ry="2" />
+<text  x="28.79" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetType (250,000 samples, 0.04%)</title><rect x="275.4" y="277" width="0.5" height="15.0" fill="rgb(242,150,11)" rx="2" ry="2" />
+<text  x="278.40" y="287.5" ></text>
+</g>
+<g >
+<title>bwtree::BloomFilter&lt;long, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::__ExistsScalar (1,000,000 samples, 0.17%)</title><rect x="279.3" y="245" width="2.0" height="15.0" fill="rgb(231,76,5)" rx="2" ry="2" />
+<text  x="282.35" y="255.5" ></text>
+</g>
+<g >
+<title>void std::allocator_traits&lt;std::allocator&lt;int&gt; &gt;::construct&lt;int, int&gt; (1,000,000 samples, 0.17%)</title><rect x="336.6" y="277" width="1.9" height="15.0" fill="rgb(231,104,30)" rx="2" ry="2" />
+<text  x="339.57" y="287.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllValuesOnLeaf (250,000 samples, 0.04%)</title><rect x="87.0" y="133" width="0.4" height="15.0" fill="rgb(230,195,32)" rx="2" ry="2" />
+<text  x="89.96" y="143.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hash_node_value_base&lt;std::pair&lt;int const, int&gt; &gt;::_M_valptr (250,000 samples, 0.04%)</title><rect x="329.2" y="261" width="0.5" height="15.0" fill="rgb(234,178,16)" rx="2" ry="2" />
+<text  x="332.17" y="271.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::EpochManager::~EpochManager (6,000,000 samples, 1.00%)</title><rect x="309.4" y="293" width="11.9" height="15.0" fill="rgb(251,11,20)" rx="2" ry="2" />
+<text  x="312.44" y="303.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;long, unsigned long&gt; const* const&amp; std::min&lt;std::pair&lt;long, unsigned long&gt; const*&gt; (500,000 samples, 0.08%)</title><rect x="211.3" y="197" width="1.0" height="15.0" fill="rgb(236,39,50)" rx="2" ry="2" />
+<text  x="214.27" y="207.5" ></text>
+</g>
+<g >
+<title>void std::__invoke_impl&lt;void, test::MultiThreadTestUtil::RunThreadsUntilFinish (129,500,000 samples, 21.66%)</title><rect x="10.0" y="357" width="255.5" height="15.0" fill="rgb(229,20,6)" rx="2" ry="2" />
+<text  x="13.00" y="367.5" >void std::__invoke_impl&lt;void, test..</text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyCmpEqual (250,000 samples, 0.04%)</title><rect x="282.8" y="261" width="0.5" height="15.0" fill="rgb(235,202,37)" rx="2" ry="2" />
+<text  x="285.80" y="271.5" ></text>
+</g>
+<g >
+<title>bwtree_test (598,000,000 samples, 100.00%)</title><rect x="10.0" y="533" width="1180.0" height="15.0" fill="rgb(250,118,28)" rx="2" ry="2" />
+<text  x="13.00" y="543.5" >bwtree_test</text>
+</g>
+<g >
+<title>std::__detail::_Hash_node_value_base&lt;long&gt;::_M_v (250,000 samples, 0.04%)</title><rect x="294.1" y="149" width="0.5" height="15.0" fill="rgb(226,86,30)" rx="2" ry="2" />
+<text  x="297.15" y="159.5" ></text>
+</g>
+<g >
+<title>bwtree::BloomFilter&lt;std::pair&lt;long, long&gt;, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairEqualityChecker, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairHashFunc&gt;::Exists (750,000 samples, 0.13%)</title><rect x="113.1" y="117" width="1.5" height="15.0" fill="rgb(223,87,39)" rx="2" ry="2" />
+<text  x="116.10" y="127.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::IsOnLeafDeltaChain (1,000,000 samples, 0.17%)</title><rect x="208.3" y="181" width="2.0" height="15.0" fill="rgb(209,117,40)" rx="2" ry="2" />
+<text  x="211.31" y="191.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, unsigned long&gt; &gt;::End (500,000 samples, 0.08%)</title><rect x="167.9" y="197" width="0.9" height="15.0" fill="rgb(245,105,0)" rx="2" ry="2" />
+<text  x="170.86" y="207.5" ></text>
+</g>
+<g >
+<title>test::BwTreeTestUtil::KeyEqualityChecker::operator (250,000 samples, 0.04%)</title><rect x="260.1" y="197" width="0.5" height="15.0" fill="rgb(207,105,48)" rx="2" ry="2" />
+<text  x="263.11" y="207.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Adaptor&lt;std::linear_congruential_engine&lt;unsigned long, 16807ul, 0ul, 2147483647ul&gt;, double&gt;::operator (1,500,000 samples, 0.25%)</title><rect x="1133.3" y="245" width="2.9" height="15.0" fill="rgb(249,160,11)" rx="2" ry="2" />
+<text  x="1136.27" y="255.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, unsigned long&gt; &gt;::End (250,000 samples, 0.04%)</title><rect x="321.3" y="197" width="0.5" height="15.0" fill="rgb(230,13,42)" rx="2" ry="2" />
+<text  x="324.28" y="207.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Insert_base&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::insert (10,250,000 samples, 1.71%)</title><rect x="289.2" y="245" width="20.2" height="15.0" fill="rgb(210,190,12)" rx="2" ry="2" />
+<text  x="292.21" y="255.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;long, std::allocator&lt;long&gt; &gt;::end (250,000 samples, 0.04%)</title><rect x="284.3" y="245" width="0.5" height="15.0" fill="rgb(244,224,49)" rx="2" ry="2" />
+<text  x="287.28" y="255.5" ></text>
+</g>
+<g >
+<title>std::operator&amp; (750,000 samples, 0.13%)</title><rect x="47.5" y="197" width="1.5" height="15.0" fill="rgb(224,57,13)" rx="2" ry="2" />
+<text  x="50.49" y="207.5" ></text>
+</g>
+<g >
+<title>std::function&lt;void  (129,500,000 samples, 21.66%)</title><rect x="10.0" y="325" width="255.5" height="15.0" fill="rgb(222,161,32)" rx="2" ry="2" />
+<text  x="13.00" y="335.5" >std::function&lt;void </text>
+</g>
+<g >
+<title>__gnu_cxx::__ops::_Iter_comp_val&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairComparator&gt; __gnu_cxx::__ops::__iter_comp_val&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairComparator&gt; (250,000 samples, 0.04%)</title><rect x="235.4" y="181" width="0.5" height="15.0" fill="rgb(208,172,45)" rx="2" ry="2" />
+<text  x="238.44" y="191.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InnerDataNode const** std::__copy_move_backward_a&lt;false, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InnerDataNode const**, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InnerDataNode const**&gt; (250,000 samples, 0.04%)</title><rect x="101.3" y="85" width="0.5" height="15.0" fill="rgb(248,25,40)" rx="2" ry="2" />
+<text  x="104.26" y="95.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;long, long&gt; const* std::lower_bound&lt;std::pair&lt;long, long&gt; const*, std::pair&lt;long, long&gt;, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairComparator&gt; (11,000,000 samples, 1.84%)</title><rect x="235.4" y="197" width="21.7" height="15.0" fill="rgb(233,63,13)" rx="2" ry="2" />
+<text  x="238.44" y="207.5" >s..</text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetItemCount (250,000 samples, 0.04%)</title><rect x="74.6" y="165" width="0.5" height="15.0" fill="rgb(219,196,24)" rx="2" ry="2" />
+<text  x="77.62" y="175.5" ></text>
+</g>
+<g >
+<title>long&amp;&amp; std::forward&lt;long&gt; (250,000 samples, 0.04%)</title><rect x="258.1" y="181" width="0.5" height="15.0" fill="rgb(217,118,26)" rx="2" ry="2" />
+<text  x="261.14" y="191.5" ></text>
+</g>
+<g >
+<title>std::__cmpexch_failure_order2 (500,000 samples, 0.08%)</title><rect x="45.0" y="181" width="1.0" height="15.0" fill="rgb(214,73,33)" rx="2" ry="2" />
+<text  x="48.03" y="191.5" ></text>
+</g>
+<g >
+<title>void __gnu_cxx::new_allocator&lt;int&gt;::construct&lt;int, int&gt; (1,000,000 samples, 0.17%)</title><rect x="336.6" y="261" width="1.9" height="15.0" fill="rgb(212,53,6)" rx="2" ry="2" />
+<text  x="339.57" y="271.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hashtable_ebo_helper&lt;1, std::hash&lt;long&gt;, true&gt;::_M_cget (250,000 samples, 0.04%)</title><rect x="305.0" y="181" width="0.5" height="15.0" fill="rgb(223,95,12)" rx="2" ry="2" />
+<text  x="308.00" y="191.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hash_code_base&lt;long, long, std::__detail::_Identity, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, false&gt;::_M_bucket_index (250,000 samples, 0.04%)</title><rect x="292.7" y="197" width="0.5" height="15.0" fill="rgb(238,205,54)" rx="2" ry="2" />
+<text  x="295.67" y="207.5" ></text>
+</g>
+<g >
+<title>std::iterator_traits&lt;std::pair&lt;long, long&gt; const*&gt;::difference_type std::distance&lt;std::pair&lt;long, long&gt; const*&gt; (500,000 samples, 0.08%)</title><rect x="236.4" y="181" width="1.0" height="15.0" fill="rgb(228,103,7)" rx="2" ry="2" />
+<text  x="239.43" y="191.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, unsigned long&gt; &gt;::~ElasticNode (250,000 samples, 0.04%)</title><rect x="321.3" y="213" width="0.5" height="15.0" fill="rgb(253,70,49)" rx="2" ry="2" />
+<text  x="324.28" y="223.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const** std::upper_bound&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const**, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const*, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllValuesOnLeaf (4,750,000 samples, 0.79%)</title><rect x="137.8" y="101" width="9.3" height="15.0" fill="rgb(227,75,42)" rx="2" ry="2" />
+<text  x="140.77" y="111.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::GetLatestNodeSnapshot (500,000 samples, 0.08%)</title><rect x="170.3" y="197" width="1.0" height="15.0" fill="rgb(225,166,47)" rx="2" ry="2" />
+<text  x="173.33" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTreeBase::GetInnerDeltaChainLengthThreshold (250,000 samples, 0.04%)</title><rect x="157.5" y="181" width="0.5" height="15.0" fill="rgb(207,141,16)" rx="2" ry="2" />
+<text  x="160.50" y="191.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetType (250,000 samples, 0.04%)</title><rect x="275.9" y="245" width="0.5" height="15.0" fill="rgb(205,119,18)" rx="2" ry="2" />
+<text  x="278.89" y="255.5" ></text>
+</g>
+<g >
+<title>test::MultiThreadTestUtil::RunThreadsUntilFinish (129,500,000 samples, 21.66%)</title><rect x="10.0" y="341" width="255.5" height="15.0" fill="rgb(228,168,13)" rx="2" ry="2" />
+<text  x="13.00" y="351.5" >test::MultiThreadTestUtil::RunThre..</text>
+</g>
+<g >
+<title>double std::uniform_real_distribution&lt;double&gt;::operator (2,250,000 samples, 0.38%)</title><rect x="1131.8" y="277" width="4.4" height="15.0" fill="rgb(234,195,2)" rx="2" ry="2" />
+<text  x="1134.79" y="287.5" ></text>
+</g>
+<g >
+<title>[libc.so.6] (250,000 samples, 0.04%)</title><rect x="288.7" y="213" width="0.5" height="15.0" fill="rgb(250,112,49)" rx="2" ry="2" />
+<text  x="291.72" y="223.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::NavigateInnerNode (1,250,000 samples, 0.21%)</title><rect x="276.4" y="277" width="2.5" height="15.0" fill="rgb(233,219,36)" rx="2" ry="2" />
+<text  x="279.39" y="287.5" ></text>
+</g>
+<g >
+<title>[unknown] (1,500,000 samples, 0.25%)</title><rect x="265.5" y="517" width="3.0" height="15.0" fill="rgb(211,44,53)" rx="2" ry="2" />
+<text  x="268.54" y="527.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::FinishPartialSMOReadOptimized (250,000 samples, 0.04%)</title><rect x="275.9" y="261" width="0.5" height="15.0" fill="rgb(205,73,40)" rx="2" ry="2" />
+<text  x="278.89" y="271.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::GetNode (4,000,000 samples, 0.67%)</title><rect x="87.9" y="181" width="7.9" height="15.0" fill="rgb(254,173,30)" rx="2" ry="2" />
+<text  x="90.94" y="191.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hash_node_value_base&lt;std::pair&lt;int const, int&gt; &gt;::_M_v (250,000 samples, 0.04%)</title><rect x="329.2" y="277" width="0.5" height="15.0" fill="rgb(241,153,6)" rx="2" ry="2" />
+<text  x="332.17" y="287.5" ></text>
+</g>
+<g >
+<title>bwtree::BloomFilter&lt;long, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::Exists (1,000,000 samples, 0.17%)</title><rect x="279.3" y="261" width="2.0" height="15.0" fill="rgb(237,139,7)" rx="2" ry="2" />
+<text  x="282.35" y="271.5" ></text>
+</g>
+<g >
+<title>__gnu_cxx::__normal_iterator&lt;int*, std::vector&lt;int, std::allocator&lt;int&gt; &gt; &gt;::operator- (250,000 samples, 0.04%)</title><rect x="334.6" y="261" width="0.5" height="15.0" fill="rgb(210,156,46)" rx="2" ry="2" />
+<text  x="337.60" y="271.5" ></text>
+</g>
+<g >
+<title>std::_Function_handler&lt;void  (129,500,000 samples, 21.66%)</title><rect x="10.0" y="309" width="255.5" height="15.0" fill="rgb(239,114,37)" rx="2" ry="2" />
+<text  x="13.00" y="319.5" >std::_Function_handler&lt;void </text>
+</g>
+<g >
+<title>std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::_M_bucket_index (250,000 samples, 0.04%)</title><rect x="292.7" y="213" width="0.5" height="15.0" fill="rgb(227,176,16)" rx="2" ry="2" />
+<text  x="295.67" y="223.5" ></text>
+</g>
+<g >
+<title>__gnu_cxx::__aligned_buffer&lt;long&gt;::_M_ptr (250,000 samples, 0.04%)</title><rect x="294.1" y="117" width="0.5" height="15.0" fill="rgb(247,117,51)" rx="2" ry="2" />
+<text  x="297.15" y="127.5" ></text>
+</g>
+<g >
+<title>____wcstold_l_internal (750,000 samples, 0.13%)</title><rect x="266.0" y="501" width="1.5" height="15.0" fill="rgb(251,83,32)" rx="2" ry="2" />
+<text  x="269.03" y="511.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTreeBase::GetInnerNodeSizeLowerThreshold (250,000 samples, 0.04%)</title><rect x="75.1" y="181" width="0.5" height="15.0" fill="rgb(209,184,5)" rx="2" ry="2" />
+<text  x="78.12" y="191.5" ></text>
+</g>
+<g >
+<title>__stpncpy_sse2_unaligned (250,000 samples, 0.04%)</title><rect x="313.9" y="213" width="0.5" height="15.0" fill="rgb(242,135,52)" rx="2" ry="2" />
+<text  x="316.88" y="223.5" ></text>
+</g>
+<g >
+<title>std::operator&amp; (750,000 samples, 0.13%)</title><rect x="46.0" y="181" width="1.5" height="15.0" fill="rgb(214,91,13)" rx="2" ry="2" />
+<text  x="49.01" y="191.5" ></text>
+</g>
+<g >
+<title>void std::__invoke_impl&lt;void, common::WorkerPool::AddThread (129,500,000 samples, 21.66%)</title><rect x="10.0" y="437" width="255.5" height="15.0" fill="rgb(230,157,8)" rx="2" ry="2" />
+<text  x="13.00" y="447.5" >void std::__invoke_impl&lt;void, comm..</text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::__detail::_Hash_node&lt;long, false&gt; &gt; &gt;::allocate (250,000 samples, 0.04%)</title><rect x="308.5" y="181" width="0.4" height="15.0" fill="rgb(223,163,23)" rx="2" ry="2" />
+<text  x="311.45" y="191.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::Context::Context (500,000 samples, 0.08%)</title><rect x="11.5" y="245" width="1.0" height="15.0" fill="rgb(205,26,32)" rx="2" ry="2" />
+<text  x="14.48" y="255.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ConsolidateInnerNode (1,500,000 samples, 0.25%)</title><rect x="99.8" y="165" width="2.9" height="15.0" fill="rgb(220,7,37)" rx="2" ry="2" />
+<text  x="102.78" y="175.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::NavigateInnerNode (27,500,000 samples, 4.60%)</title><rect x="158.0" y="213" width="54.3" height="15.0" fill="rgb(229,106,31)" rx="2" ry="2" />
+<text  x="160.99" y="223.5" >bwtre..</text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode::LeafDataNode (750,000 samples, 0.13%)</title><rect x="52.9" y="213" width="1.5" height="15.0" fill="rgb(223,174,33)" rx="2" ry="2" />
+<text  x="55.92" y="223.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::_M_insert_unique_node (3,500,000 samples, 0.59%)</title><rect x="295.6" y="213" width="6.9" height="15.0" fill="rgb(228,23,50)" rx="2" ry="2" />
+<text  x="298.63" y="223.5" ></text>
+</g>
+<g >
+<title>operator new (250,000 samples, 0.04%)</title><rect x="128.9" y="85" width="0.5" height="15.0" fill="rgb(249,207,53)" rx="2" ry="2" />
+<text  x="131.89" y="95.5" ></text>
+</g>
+<g >
+<title>std::hash&lt;int&gt;::operator (250,000 samples, 0.04%)</title><rect x="328.2" y="197" width="0.5" height="15.0" fill="rgb(211,43,22)" rx="2" ry="2" />
+<text  x="331.19" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, unsigned long&gt; &gt;::Begin (250,000 samples, 0.04%)</title><rect x="167.4" y="197" width="0.5" height="15.0" fill="rgb(243,102,54)" rx="2" ry="2" />
+<text  x="170.37" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetType (750,000 samples, 0.13%)</title><rect x="117.0" y="117" width="1.5" height="15.0" fill="rgb(237,15,21)" rx="2" ry="2" />
+<text  x="120.05" y="127.5" ></text>
+</g>
+<g >
+<title>____wcstof_l_internal (250,000 samples, 0.04%)</title><rect x="330.7" y="197" width="0.4" height="15.0" fill="rgb(211,166,13)" rx="2" ry="2" />
+<text  x="333.65" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::NavigateSiblingChain (1,500,000 samples, 0.25%)</title><rect x="225.6" y="197" width="2.9" height="15.0" fill="rgb(233,60,32)" rx="2" ry="2" />
+<text  x="228.58" y="207.5" ></text>
+</g>
+<g >
+<title>std::linear_congruential_engine&lt;unsigned long, 16807ul, 0ul, 2147483647ul&gt;::operator (250,000 samples, 0.04%)</title><rect x="1135.7" y="213" width="0.5" height="15.0" fill="rgb(243,184,31)" rx="2" ry="2" />
+<text  x="1138.74" y="223.5" ></text>
+</g>
+<g >
+<title>round_and_return (250,000 samples, 0.04%)</title><rect x="268.0" y="501" width="0.5" height="15.0" fill="rgb(226,84,13)" rx="2" ry="2" />
+<text  x="271.00" y="511.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;long, std::allocator&lt;long&gt; &gt;::_S_relocate (250,000 samples, 0.04%)</title><rect x="287.7" y="229" width="0.5" height="15.0" fill="rgb(234,18,5)" rx="2" ry="2" />
+<text  x="290.73" y="239.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;std::__strip_reference_wrapper&lt;std::decay&lt;long const&amp;&gt;::type&gt;::__type, std::__strip_reference_wrapper&lt;std::decay&lt;long const&amp;&gt;::type&gt;::__type&gt; std::make_pair&lt;long const&amp;, long const&amp;&gt; (1,250,000 samples, 0.21%)</title><rect x="54.9" y="213" width="2.5" height="15.0" fill="rgb(237,183,21)" rx="2" ry="2" />
+<text  x="57.89" y="223.5" ></text>
+</g>
+<g >
+<title>std::remove_reference&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllValuesOnLeaf (250,000 samples, 0.04%)</title><rect x="146.6" y="85" width="0.5" height="15.0" fill="rgb(220,204,49)" rx="2" ry="2" />
+<text  x="149.65" y="95.5" ></text>
+</g>
+<g >
+<title>void bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllValuesOnLeafRecursive&lt;bwtree::SortedSmallSet&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const*, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllValuesOnLeaf (22,750,000 samples, 3.80%)</title><rect x="106.7" y="133" width="44.9" height="15.0" fill="rgb(236,102,7)" rx="2" ry="2" />
+<text  x="109.69" y="143.5" >void..</text>
+</g>
+<g >
+<title>std::enable_if&lt;is_invocable_r_v&lt;void, BwtreeTest_ConcurrentSkewedInsert_00_Test::TestBody (129,500,000 samples, 21.66%)</title><rect x="10.0" y="293" width="255.5" height="15.0" fill="rgb(232,145,43)" rx="2" ry="2" />
+<text  x="13.00" y="303.5" >std::enable_if&lt;is_invocable_r_v&lt;vo..</text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InnerNode::~InnerNode (250,000 samples, 0.04%)</title><rect x="321.3" y="229" width="0.5" height="15.0" fill="rgb(235,206,33)" rx="2" ry="2" />
+<text  x="324.28" y="239.5" ></text>
+</g>
+<g >
+<title>void __gnu_cxx::new_allocator&lt;long&gt;::construct&lt;long, long const&amp;&gt; (500,000 samples, 0.08%)</title><rect x="284.8" y="229" width="1.0" height="15.0" fill="rgb(208,22,51)" rx="2" ry="2" />
+<text  x="287.77" y="239.5" ></text>
+</g>
+<g >
+<title>std::operator| (500,000 samples, 0.08%)</title><rect x="49.0" y="197" width="1.0" height="15.0" fill="rgb(237,206,33)" rx="2" ry="2" />
+<text  x="51.97" y="207.5" ></text>
+</g>
+<g >
+<title>unsigned long const&amp; std::max&lt;unsigned long&gt; (250,000 samples, 0.04%)</title><rect x="287.2" y="213" width="0.5" height="15.0" fill="rgb(232,25,40)" rx="2" ry="2" />
+<text  x="290.24" y="223.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;long, std::allocator&lt;long&gt; &gt;::_S_do_relocate (250,000 samples, 0.04%)</title><rect x="287.7" y="213" width="0.5" height="15.0" fill="rgb(210,220,29)" rx="2" ry="2" />
+<text  x="290.73" y="223.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::AdjustNodeSize (5,500,000 samples, 0.92%)</title><rect x="64.8" y="197" width="10.8" height="15.0" fill="rgb(214,138,49)" rx="2" ry="2" />
+<text  x="67.76" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ConsolidateNode (250,000 samples, 0.04%)</title><rect x="87.0" y="165" width="0.4" height="15.0" fill="rgb(244,207,25)" rx="2" ry="2" />
+<text  x="89.96" y="175.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetItemCount (250,000 samples, 0.04%)</title><rect x="51.9" y="213" width="0.5" height="15.0" fill="rgb(217,139,10)" rx="2" ry="2" />
+<text  x="54.93" y="223.5" ></text>
+</g>
+<g >
+<title>bwtree::BloomFilter&lt;std::pair&lt;long, long&gt;, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairEqualityChecker, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairHashFunc&gt;::__ExistsScalar (750,000 samples, 0.13%)</title><rect x="113.1" y="101" width="1.5" height="15.0" fill="rgb(225,27,34)" rx="2" ry="2" />
+<text  x="116.10" y="111.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::_Scoped_node::_Scoped_node (250,000 samples, 0.04%)</title><rect x="302.5" y="213" width="0.5" height="15.0" fill="rgb(210,187,51)" rx="2" ry="2" />
+<text  x="305.53" y="223.5" ></text>
+</g>
+<g >
+<title>[unknown] (250,000 samples, 0.04%)</title><rect x="265.5" y="501" width="0.5" height="15.0" fill="rgb(241,206,3)" rx="2" ry="2" />
+<text  x="268.54" y="511.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetType (750,000 samples, 0.13%)</title><rect x="72.2" y="165" width="1.4" height="15.0" fill="rgb(231,195,14)" rx="2" ry="2" />
+<text  x="75.16" y="175.5" ></text>
+</g>
+<g >
+<title>test::BwTreeTestUtil::KeyComparator::operator (250,000 samples, 0.04%)</title><rect x="175.8" y="181" width="0.4" height="15.0" fill="rgb(254,211,32)" rx="2" ry="2" />
+<text  x="178.75" y="191.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::_M_deallocate_buckets (250,000 samples, 0.04%)</title><rect x="300.1" y="149" width="0.5" height="15.0" fill="rgb(232,111,21)" rx="2" ry="2" />
+<text  x="303.07" y="159.5" ></text>
+</g>
+<g >
+<title>std::unordered_set&lt;long, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::allocator&lt;long&gt; &gt;::~unordered_set (750,000 samples, 0.13%)</title><rect x="330.2" y="309" width="1.4" height="15.0" fill="rgb(221,49,1)" rx="2" ry="2" />
+<text  x="333.16" y="319.5" ></text>
+</g>
+<g >
+<title>__gnu_cxx::__normal_iterator&lt;int*, std::vector&lt;int, std::allocator&lt;int&gt; &gt; &gt;::__normal_iterator (500,000 samples, 0.08%)</title><rect x="333.1" y="277" width="1.0" height="15.0" fill="rgb(240,94,6)" rx="2" ry="2" />
+<text  x="336.12" y="287.5" ></text>
+</g>
+<g >
+<title>std::iterator_traits&lt;std::pair&lt;long, unsigned long&gt; const*&gt;::difference_type std::__distance&lt;std::pair&lt;long, unsigned long&gt; const*&gt; (250,000 samples, 0.04%)</title><rect x="197.0" y="133" width="0.5" height="15.0" fill="rgb(254,83,3)" rx="2" ry="2" />
+<text  x="199.96" y="143.5" ></text>
+</g>
+<g >
+<title>long* std::__relocate_a&lt;long*, long*, std::allocator&lt;long&gt; &gt; (250,000 samples, 0.04%)</title><rect x="287.7" y="197" width="0.5" height="15.0" fill="rgb(207,141,25)" rx="2" ry="2" />
+<text  x="290.73" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::GetLatestNodeSnapshot (1,250,000 samples, 0.21%)</title><rect x="83.5" y="181" width="2.5" height="15.0" fill="rgb(245,153,50)" rx="2" ry="2" />
+<text  x="86.50" y="191.5" ></text>
+</g>
+<g >
+<title>__gnu_cxx::__ops::_Iter_comp_val&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairComparator&gt;::_Iter_comp_val (250,000 samples, 0.04%)</title><rect x="235.4" y="165" width="0.5" height="15.0" fill="rgb(224,104,1)" rx="2" ry="2" />
+<text  x="238.44" y="175.5" ></text>
+</g>
+<g >
+<title>void std::advance&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const**, long&gt; (500,000 samples, 0.08%)</title><rect x="145.7" y="69" width="0.9" height="15.0" fill="rgb(251,8,52)" rx="2" ry="2" />
+<text  x="148.66" y="79.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetLowKeyPair (250,000 samples, 0.04%)</title><rect x="52.4" y="213" width="0.5" height="15.0" fill="rgb(242,130,22)" rx="2" ry="2" />
+<text  x="55.42" y="223.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::IsDeltaNode (1,250,000 samples, 0.21%)</title><rect x="97.3" y="181" width="2.5" height="15.0" fill="rgb(217,139,32)" rx="2" ry="2" />
+<text  x="100.32" y="191.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;long, unsigned long&gt; const* std::__lower_bound&lt;std::pair&lt;long, unsigned long&gt; const*, std::pair&lt;long, unsigned long&gt;, __gnu_cxx::__ops::_Iter_comp_val&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyNodeIDPairComparator&gt; &gt; (250,000 samples, 0.04%)</title><rect x="86.5" y="149" width="0.5" height="15.0" fill="rgb(244,33,22)" rx="2" ry="2" />
+<text  x="89.46" y="159.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;long, unsigned long&gt; const* std::upper_bound&lt;std::pair&lt;long, unsigned long&gt; const*, std::pair&lt;long, unsigned long&gt;, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyNodeIDPairComparator&gt; (250,000 samples, 0.04%)</title><rect x="276.4" y="245" width="0.5" height="15.0" fill="rgb(211,204,1)" rx="2" ry="2" />
+<text  x="279.39" y="255.5" ></text>
+</g>
+<g >
+<title>_nss_dns_gethostbyaddr2_r (250,000 samples, 0.04%)</title><rect x="1189.0" y="517" width="0.5" height="15.0" fill="rgb(236,224,22)" rx="2" ry="2" />
+<text  x="1192.01" y="527.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;long, unsigned long&gt; const* const&amp; std::max&lt;std::pair&lt;long, unsigned long&gt; const*&gt; (250,000 samples, 0.04%)</title><rect x="278.4" y="261" width="0.5" height="15.0" fill="rgb(237,50,39)" rx="2" ry="2" />
+<text  x="281.36" y="271.5" ></text>
+</g>
+<g >
+<title>test::BwTreeTestUtil::KeyComparator::operator (250,000 samples, 0.04%)</title><rect x="277.9" y="213" width="0.5" height="15.0" fill="rgb(249,120,38)" rx="2" ry="2" />
+<text  x="280.87" y="223.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyCmpEqual (1,250,000 samples, 0.21%)</title><rect x="223.1" y="197" width="2.5" height="15.0" fill="rgb(215,142,47)" rx="2" ry="2" />
+<text  x="226.11" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const** std::__copy_move_backward_a2&lt;false, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const**, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const**&gt; (250,000 samples, 0.04%)</title><rect x="136.3" y="53" width="0.5" height="15.0" fill="rgb(225,43,22)" rx="2" ry="2" />
+<text  x="139.29" y="63.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const** std::__upper_bound&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const**, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const*, __gnu_cxx::__ops::_Val_comp_iter&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllValuesOnLeaf (3,000,000 samples, 0.50%)</title><rect x="140.7" y="85" width="5.9" height="15.0" fill="rgb(252,151,39)" rx="2" ry="2" />
+<text  x="143.73" y="95.5" ></text>
+</g>
+<g >
+<title>test::BwTreeTestUtil::KeyComparator::operator (500,000 samples, 0.08%)</title><rect x="195.5" y="133" width="1.0" height="15.0" fill="rgb(221,26,39)" rx="2" ry="2" />
+<text  x="198.48" y="143.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, unsigned long&gt; &gt;::End (500,000 samples, 0.08%)</title><rect x="177.2" y="165" width="1.0" height="15.0" fill="rgb(246,105,43)" rx="2" ry="2" />
+<text  x="180.23" y="175.5" ></text>
+</g>
+<g >
+<title>test::BwTreeTestUtil::KeyComparator::operator (500,000 samples, 0.08%)</title><rect x="101.8" y="117" width="0.9" height="15.0" fill="rgb(241,40,50)" rx="2" ry="2" />
+<text  x="104.76" y="127.5" ></text>
+</g>
+<g >
+<title>std::iterator_traits&lt;std::pair&lt;long, long&gt; const*&gt;::iterator_category std::__iterator_category&lt;std::pair&lt;long, long&gt; const*&gt; (250,000 samples, 0.04%)</title><rect x="252.2" y="165" width="0.5" height="15.0" fill="rgb(233,166,39)" rx="2" ry="2" />
+<text  x="255.22" y="175.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyCmpLess (2,000,000 samples, 0.33%)</title><rect x="171.8" y="181" width="4.0" height="15.0" fill="rgb(225,8,50)" rx="2" ry="2" />
+<text  x="174.81" y="191.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;int, std::allocator&lt;int&gt; &gt;::push_back (2,250,000 samples, 0.38%)</title><rect x="334.1" y="309" width="4.4" height="15.0" fill="rgb(228,67,26)" rx="2" ry="2" />
+<text  x="337.11" y="319.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::GetLatestNodeSnapshot (250,000 samples, 0.04%)</title><rect x="222.6" y="197" width="0.5" height="15.0" fill="rgb(234,139,7)" rx="2" ry="2" />
+<text  x="225.62" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetLowKeyPair (250,000 samples, 0.04%)</title><rect x="164.4" y="197" width="0.5" height="15.0" fill="rgb(239,115,19)" rx="2" ry="2" />
+<text  x="167.41" y="207.5" ></text>
+</g>
+<g >
+<title>std::equal_to&lt;int&gt;::operator (500,000 samples, 0.08%)</title><rect x="327.2" y="229" width="1.0" height="15.0" fill="rgb(206,229,47)" rx="2" ry="2" />
+<text  x="330.20" y="239.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::NavigateInnerNode (500,000 samples, 0.08%)</title><rect x="86.0" y="181" width="1.0" height="15.0" fill="rgb(226,6,31)" rx="2" ry="2" />
+<text  x="88.97" y="191.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;int, std::allocator&lt;int&gt; &gt;::operator[] (250,000 samples, 0.04%)</title><rect x="265.0" y="245" width="0.5" height="15.0" fill="rgb(222,122,34)" rx="2" ry="2" />
+<text  x="268.04" y="255.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, unsigned long&gt; &gt;::GetNodeHeader (750,000 samples, 0.13%)</title><rect x="168.8" y="197" width="1.5" height="15.0" fill="rgb(249,43,29)" rx="2" ry="2" />
+<text  x="171.85" y="207.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::_Hashtable (250,000 samples, 0.04%)</title><rect x="288.7" y="245" width="0.5" height="15.0" fill="rgb(254,21,51)" rx="2" ry="2" />
+<text  x="291.72" y="255.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ValueCmpEqual (250,000 samples, 0.04%)</title><rect x="264.1" y="213" width="0.4" height="15.0" fill="rgb(253,3,14)" rx="2" ry="2" />
+<text  x="267.06" y="223.5" ></text>
+</g>
+<g >
+<title>bool __gnu_cxx::__ops::_Val_comp_iter&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllValuesOnLeaf (750,000 samples, 0.13%)</title><rect x="143.2" y="69" width="1.5" height="15.0" fill="rgb(230,187,53)" rx="2" ry="2" />
+<text  x="146.19" y="79.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::clear (750,000 samples, 0.13%)</title><rect x="330.2" y="277" width="1.4" height="15.0" fill="rgb(207,4,2)" rx="2" ry="2" />
+<text  x="333.16" y="287.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;long, unsigned long&gt; const* std::__upper_bound&lt;std::pair&lt;long, unsigned long&gt; const*, std::pair&lt;long, unsigned long&gt;, __gnu_cxx::__ops::_Val_comp_iter&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyNodeIDPairComparator&gt; &gt; (250,000 samples, 0.04%)</title><rect x="276.4" y="229" width="0.5" height="15.0" fill="rgb(250,86,34)" rx="2" ry="2" />
+<text  x="279.39" y="239.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, long&gt; &gt;::End (250,000 samples, 0.04%)</title><rect x="314.4" y="229" width="0.5" height="15.0" fill="rgb(219,23,37)" rx="2" ry="2" />
+<text  x="317.37" y="239.5" ></text>
+</g>
+<g >
+<title>std::__invoke_result&lt;common::WorkerPool::AddThread (129,500,000 samples, 21.66%)</title><rect x="10.0" y="453" width="255.5" height="15.0" fill="rgb(205,110,20)" rx="2" ry="2" />
+<text  x="13.00" y="463.5" >std::__invoke_result&lt;common::Worke..</text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::FinishPartialSMO (6,000,000 samples, 1.00%)</title><rect x="75.6" y="197" width="11.8" height="15.0" fill="rgb(229,162,6)" rx="2" ry="2" />
+<text  x="78.61" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyCmpGreaterEqual (250,000 samples, 0.04%)</title><rect x="228.0" y="181" width="0.5" height="15.0" fill="rgb(244,135,17)" rx="2" ry="2" />
+<text  x="231.04" y="191.5" ></text>
+</g>
+<g >
+<title>std::operator&amp; (500,000 samples, 0.08%)</title><rect x="154.5" y="117" width="1.0" height="15.0" fill="rgb(212,155,23)" rx="2" ry="2" />
+<text  x="157.54" y="127.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::TakeNodeSnapshot (4,250,000 samples, 0.71%)</title><rect x="87.4" y="197" width="8.4" height="15.0" fill="rgb(228,137,48)" rx="2" ry="2" />
+<text  x="90.45" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::NavigateSiblingChain (500,000 samples, 0.08%)</title><rect x="283.3" y="261" width="1.0" height="15.0" fill="rgb(209,119,19)" rx="2" ry="2" />
+<text  x="286.29" y="271.5" ></text>
+</g>
+<g >
+<title>BwtreeTest_ConcurrentSkewedInsert_00_Test::TestBody (129,500,000 samples, 21.66%)</title><rect x="10.0" y="261" width="255.5" height="15.0" fill="rgb(209,158,49)" rx="2" ry="2" />
+<text  x="13.00" y="271.5" >BwtreeTest_ConcurrentSkewedInsert_..</text>
+</g>
+<g >
+<title>std::__detail::_Hashtable_alloc&lt;std::allocator&lt;std::__detail::_Hash_node&lt;std::pair&lt;int const, int&gt;, false&gt; &gt; &gt;::_M_deallocate_node (250,000 samples, 0.04%)</title><rect x="329.7" y="245" width="0.5" height="15.0" fill="rgb(219,51,8)" rx="2" ry="2" />
+<text  x="332.67" y="255.5" ></text>
+</g>
+<g >
+<title>std::atomic&lt;char*&gt;::fetch_sub (1,500,000 samples, 0.25%)</title><rect x="26.3" y="181" width="2.9" height="15.0" fill="rgb(221,171,10)" rx="2" ry="2" />
+<text  x="29.28" y="191.5" ></text>
+</g>
+<g >
+<title>void testing::internal::HandleExceptionsInMethodIfSupported&lt;testing::Test, void&gt; (463,750,000 samples, 77.55%)</title><rect x="273.9" y="357" width="915.1" height="15.0" fill="rgb(216,215,32)" rx="2" ry="2" />
+<text  x="276.92" y="367.5" >void testing::internal::HandleExceptionsInMethodIfSupported&lt;testing::Test, void&gt;</text>
+</g>
+<g >
+<title>test::BwTreeTestUtil::KeyComparator::operator (250,000 samples, 0.04%)</title><rect x="228.0" y="149" width="0.5" height="15.0" fill="rgb(237,213,5)" rx="2" ry="2" />
+<text  x="231.04" y="159.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetDepth (250,000 samples, 0.04%)</title><rect x="281.3" y="261" width="0.5" height="15.0" fill="rgb(209,43,31)" rx="2" ry="2" />
+<text  x="284.32" y="271.5" ></text>
+</g>
+<g >
+<title>testing::TestSuite::Run (463,750,000 samples, 77.55%)</title><rect x="273.9" y="405" width="915.1" height="15.0" fill="rgb(210,71,40)" rx="2" ry="2" />
+<text  x="276.92" y="415.5" >testing::TestSuite::Run</text>
+</g>
+<g >
+<title>____wcstold_l_internal (2,000,000 samples, 0.33%)</title><rect x="270.0" y="517" width="3.9" height="15.0" fill="rgb(224,165,26)" rx="2" ry="2" />
+<text  x="272.97" y="527.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::_M_rehash_aux (1,500,000 samples, 0.25%)</title><rect x="298.6" y="181" width="2.9" height="15.0" fill="rgb(243,35,39)" rx="2" ry="2" />
+<text  x="301.59" y="191.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::IsOnLeafDeltaChain (1,250,000 samples, 0.21%)</title><rect x="261.6" y="197" width="2.5" height="15.0" fill="rgb(215,103,1)" rx="2" ry="2" />
+<text  x="264.59" y="207.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::_M_insert_bucket_begin (1,500,000 samples, 0.25%)</title><rect x="295.6" y="197" width="3.0" height="15.0" fill="rgb(254,100,18)" rx="2" ry="2" />
+<text  x="298.63" y="207.5" ></text>
+</g>
+<g >
+<title>std::equal_to&lt;long&gt;::operator (250,000 samples, 0.04%)</title><rect x="234.9" y="197" width="0.5" height="15.0" fill="rgb(212,140,42)" rx="2" ry="2" />
+<text  x="237.95" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::EpochManager::LeaveEpoch (1,750,000 samples, 0.29%)</title><rect x="37.6" y="229" width="3.5" height="15.0" fill="rgb(238,14,3)" rx="2" ry="2" />
+<text  x="40.63" y="239.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::FreeNodeByPointer (250,000 samples, 0.04%)</title><rect x="321.3" y="277" width="0.5" height="15.0" fill="rgb(245,183,32)" rx="2" ry="2" />
+<text  x="324.28" y="287.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InnerDataNode const** std::__copy_move_backward_a2&lt;false, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InnerDataNode const**, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InnerDataNode const**&gt; (250,000 samples, 0.04%)</title><rect x="101.3" y="53" width="0.5" height="15.0" fill="rgb(253,157,12)" rx="2" ry="2" />
+<text  x="104.26" y="63.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, long&gt; &gt;::PushBack (250,000 samples, 0.04%)</title><rect x="74.1" y="149" width="0.5" height="15.0" fill="rgb(206,16,23)" rx="2" ry="2" />
+<text  x="77.13" y="159.5" ></text>
+</g>
+<g >
+<title>all (598,000,000 samples, 100%)</title><rect x="10.0" y="549" width="1180.0" height="15.0" fill="rgb(243,46,12)" rx="2" ry="2" />
+<text  x="13.00" y="559.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hash_code_base&lt;long, long, std::__detail::_Identity, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, false&gt;::_M_hash (500,000 samples, 0.08%)</title><rect x="304.5" y="197" width="1.0" height="15.0" fill="rgb(236,50,45)" rx="2" ry="2" />
+<text  x="307.51" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetType (1,000,000 samples, 0.17%)</title><rect x="208.3" y="165" width="2.0" height="15.0" fill="rgb(236,48,26)" rx="2" ry="2" />
+<text  x="211.31" y="175.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode::GetIndexPair (1,250,000 samples, 0.21%)</title><rect x="129.4" y="117" width="2.4" height="15.0" fill="rgb(245,199,46)" rx="2" ry="2" />
+<text  x="132.38" y="127.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Mod_range_hashing::operator (250,000 samples, 0.04%)</title><rect x="301.1" y="149" width="0.4" height="15.0" fill="rgb(239,104,37)" rx="2" ry="2" />
+<text  x="304.05" y="159.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;long, std::allocator&lt;long&gt; &gt;::_M_check_len (1,000,000 samples, 0.17%)</title><rect x="285.8" y="229" width="1.9" height="15.0" fill="rgb(245,58,35)" rx="2" ry="2" />
+<text  x="288.76" y="239.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::EpochManager::JoinEpoch (3,000,000 samples, 0.50%)</title><rect x="31.7" y="229" width="5.9" height="15.0" fill="rgb(223,49,31)" rx="2" ry="2" />
+<text  x="34.71" y="239.5" ></text>
+</g>
+<g >
+<title>_dl_profile_fixup (250,000 samples, 0.04%)</title><rect x="267.5" y="469" width="0.5" height="15.0" fill="rgb(234,67,30)" rx="2" ry="2" />
+<text  x="270.51" y="479.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetType (250,000 samples, 0.04%)</title><rect x="103.7" y="133" width="0.5" height="15.0" fill="rgb(207,175,42)" rx="2" ry="2" />
+<text  x="106.73" y="143.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hashtable_base&lt;long, long, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::_M_equals (250,000 samples, 0.04%)</title><rect x="295.1" y="181" width="0.5" height="15.0" fill="rgb(207,80,53)" rx="2" ry="2" />
+<text  x="298.13" y="191.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::NodeSnapshot::IsLeaf (250,000 samples, 0.04%)</title><rect x="105.7" y="133" width="0.5" height="15.0" fill="rgb(231,222,24)" rx="2" ry="2" />
+<text  x="108.70" y="143.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;int, std::allocator&lt;int&gt; &gt;::end (750,000 samples, 0.13%)</title><rect x="335.1" y="261" width="1.5" height="15.0" fill="rgb(251,163,32)" rx="2" ry="2" />
+<text  x="338.09" y="271.5" ></text>
+</g>
+<g >
+<title>std::unordered_map&lt;int, int, std::hash&lt;int&gt;, std::equal_to&lt;int&gt;, std::allocator&lt;std::pair&lt;int const, int&gt; &gt; &gt;::operator[] (4,000,000 samples, 0.67%)</title><rect x="321.8" y="309" width="7.9" height="15.0" fill="rgb(217,194,11)" rx="2" ry="2" />
+<text  x="324.77" y="319.5" ></text>
+</g>
+<g >
+<title>std::hash&lt;long&gt;::operator (250,000 samples, 0.04%)</title><rect x="298.1" y="149" width="0.5" height="15.0" fill="rgb(224,53,19)" rx="2" ry="2" />
+<text  x="301.09" y="159.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::GetLatestNodeSnapshot (500,000 samples, 0.08%)</title><rect x="156.0" y="181" width="1.0" height="15.0" fill="rgb(243,37,44)" rx="2" ry="2" />
+<text  x="159.02" y="191.5" ></text>
+</g>
+<g >
+<title>bwtree::BloomFilter&lt;std::pair&lt;long, long&gt;, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairEqualityChecker, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairHashFunc&gt;::Insert (1,000,000 samples, 0.17%)</title><rect x="114.6" y="117" width="2.0" height="15.0" fill="rgb(214,125,31)" rx="2" ry="2" />
+<text  x="117.58" y="127.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyCmpLess (250,000 samples, 0.04%)</title><rect x="175.8" y="197" width="0.4" height="15.0" fill="rgb(212,216,17)" rx="2" ry="2" />
+<text  x="178.75" y="207.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hashtable_ebo_helper&lt;0, std::allocator&lt;std::__detail::_Hash_node&lt;long, false&gt; &gt;, true&gt;::_M_get (750,000 samples, 0.13%)</title><rect x="307.0" y="165" width="1.5" height="15.0" fill="rgb(209,128,21)" rx="2" ry="2" />
+<text  x="309.97" y="175.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hashtable_alloc&lt;std::allocator&lt;std::__detail::_Hash_node&lt;std::pair&lt;int const, int&gt;, false&gt; &gt; &gt;::_M_deallocate_node_ptr (250,000 samples, 0.04%)</title><rect x="329.7" y="229" width="0.5" height="15.0" fill="rgb(250,145,40)" rx="2" ry="2" />
+<text  x="332.67" y="239.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::GetLatestNodeSnapshot (250,000 samples, 0.04%)</title><rect x="277.4" y="245" width="0.5" height="15.0" fill="rgb(227,48,46)" rx="2" ry="2" />
+<text  x="280.37" y="255.5" ></text>
+</g>
+<g >
+<title>____wcstof_l_internal (750,000 samples, 0.13%)</title><rect x="268.5" y="517" width="1.5" height="15.0" fill="rgb(224,44,16)" rx="2" ry="2" />
+<text  x="271.49" y="527.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hash_node&lt;long, false&gt;* std::__detail::_Hashtable_alloc&lt;std::allocator&lt;std::__detail::_Hash_node&lt;long, false&gt; &gt; &gt;::_M_allocate_node&lt;long const&amp;&gt; (1,750,000 samples, 0.29%)</title><rect x="305.5" y="197" width="3.4" height="15.0" fill="rgb(234,36,44)" rx="2" ry="2" />
+<text  x="308.49" y="207.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Map_base&lt;int, std::pair&lt;int const, int&gt;, std::allocator&lt;std::pair&lt;int const, int&gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;int&gt;, std::hash&lt;int&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, false, true&gt;, true&gt;::operator[] (4,000,000 samples, 0.67%)</title><rect x="321.8" y="293" width="7.9" height="15.0" fill="rgb(239,22,14)" rx="2" ry="2" />
+<text  x="324.77" y="303.5" ></text>
+</g>
+<g >
+<title>testing::UnitTest::Run (463,750,000 samples, 77.55%)</title><rect x="273.9" y="469" width="915.1" height="15.0" fill="rgb(224,14,23)" rx="2" ry="2" />
+<text  x="276.92" y="479.5" >testing::UnitTest::Run</text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, long&gt; &gt;::GetSize (250,000 samples, 0.04%)</title><rect x="105.2" y="133" width="0.5" height="15.0" fill="rgb(237,115,5)" rx="2" ry="2" />
+<text  x="108.21" y="143.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const** std::copy_backward&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const**, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const**&gt; (1,250,000 samples, 0.21%)</title><rect x="135.3" y="101" width="2.5" height="15.0" fill="rgb(229,207,46)" rx="2" ry="2" />
+<text  x="138.30" y="111.5" ></text>
+</g>
+<g >
+<title>bwtree::SortedSmallSet&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const*, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllValuesOnLeaf (7,750,000 samples, 1.30%)</title><rect x="131.8" y="117" width="15.3" height="15.0" fill="rgb(241,79,18)" rx="2" ry="2" />
+<text  x="134.85" y="127.5" ></text>
+</g>
+<g >
+<title>__gnu_cxx::__ops::_Val_comp_iter&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllValuesOnLeaf (750,000 samples, 0.13%)</title><rect x="138.3" y="85" width="1.4" height="15.0" fill="rgb(236,37,9)" rx="2" ry="2" />
+<text  x="141.26" y="95.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::_M_find_before_node (1,250,000 samples, 0.21%)</title><rect x="293.2" y="197" width="2.4" height="15.0" fill="rgb(233,156,16)" rx="2" ry="2" />
+<text  x="296.16" y="207.5" ></text>
+</g>
+<g >
+<title>std::iterator_traits&lt;std::pair&lt;long, unsigned long&gt; const*&gt;::iterator_category std::__iterator_category&lt;std::pair&lt;long, unsigned long&gt; const*&gt; (250,000 samples, 0.04%)</title><rect x="197.5" y="149" width="0.5" height="15.0" fill="rgb(235,100,16)" rx="2" ry="2" />
+<text  x="200.46" y="159.5" ></text>
+</g>
+<g >
+<title>std::pointer_traits&lt;std::__detail::_Hash_node&lt;long, false&gt;*&gt;::pointer_to (250,000 samples, 0.04%)</title><rect x="331.1" y="213" width="0.5" height="15.0" fill="rgb(235,43,39)" rx="2" ry="2" />
+<text  x="334.15" y="223.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, long&gt; &gt;::End (500,000 samples, 0.08%)</title><rect x="59.8" y="213" width="1.0" height="15.0" fill="rgb(214,216,9)" rx="2" ry="2" />
+<text  x="62.82" y="223.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::Insert (127,750,000 samples, 21.36%)</title><rect x="13.0" y="245" width="252.0" height="15.0" fill="rgb(231,17,17)" rx="2" ry="2" />
+<text  x="15.96" y="255.5" >bwtree::BwTree&lt;long, long, test::..</text>
+</g>
+<g >
+<title>std::atomic&lt;char*&gt;::load (500,000 samples, 0.08%)</title><rect x="29.2" y="181" width="1.0" height="15.0" fill="rgb(242,87,33)" rx="2" ry="2" />
+<text  x="32.24" y="191.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetType (1,250,000 samples, 0.21%)</title><rect x="164.9" y="197" width="2.5" height="15.0" fill="rgb(214,87,20)" rx="2" ry="2" />
+<text  x="167.90" y="207.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hash_code_base&lt;long, long, std::__detail::_Identity, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, false&gt;::_M_bucket_index (1,500,000 samples, 0.25%)</title><rect x="295.6" y="165" width="3.0" height="15.0" fill="rgb(228,144,15)" rx="2" ry="2" />
+<text  x="298.63" y="175.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetType (750,000 samples, 0.13%)</title><rect x="218.7" y="197" width="1.5" height="15.0" fill="rgb(229,78,29)" rx="2" ry="2" />
+<text  x="221.67" y="207.5" ></text>
+</g>
+<g >
+<title>bwtree::SortedSmallSet&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InnerDataNode const*, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::CollectAllSepsOnInner (500,000 samples, 0.08%)</title><rect x="100.8" y="117" width="1.0" height="15.0" fill="rgb(210,155,8)" rx="2" ry="2" />
+<text  x="103.77" y="127.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::_M_bucket_index (1,500,000 samples, 0.25%)</title><rect x="295.6" y="181" width="3.0" height="15.0" fill="rgb(236,193,51)" rx="2" ry="2" />
+<text  x="298.63" y="191.5" ></text>
+</g>
+<g >
+<title>__gnu_cxx::__aligned_buffer&lt;long&gt;::_M_addr (250,000 samples, 0.04%)</title><rect x="297.1" y="101" width="0.5" height="15.0" fill="rgb(224,161,10)" rx="2" ry="2" />
+<text  x="300.11" y="111.5" ></text>
+</g>
+<g >
+<title>bool testing::internal::HandleSehExceptionsInMethodIfSupported&lt;testing::internal::UnitTestImpl, bool&gt; (463,750,000 samples, 77.55%)</title><rect x="273.9" y="437" width="915.1" height="15.0" fill="rgb(230,10,22)" rx="2" ry="2" />
+<text  x="276.92" y="447.5" >bool testing::internal::HandleSehExceptionsInMethodIfSupported&lt;testing::internal::UnitTestImpl, bool&gt;</text>
+</g>
+<g >
+<title>std::thread::_Invoker&lt;std::tuple&lt;common::WorkerPool::AddThread (129,500,000 samples, 21.66%)</title><rect x="10.0" y="485" width="255.5" height="15.0" fill="rgb(224,179,10)" rx="2" ry="2" />
+<text  x="13.00" y="495.5" >std::thread::_Invoker&lt;std::tuple&lt;c..</text>
+</g>
+<g >
+<title>std::iterator_traits&lt;std::pair&lt;long, long&gt; const*&gt;::difference_type std::distance&lt;std::pair&lt;long, long&gt; const*&gt; (250,000 samples, 0.04%)</title><rect x="251.7" y="165" width="0.5" height="15.0" fill="rgb(225,121,7)" rx="2" ry="2" />
+<text  x="254.72" y="175.5" ></text>
+</g>
+<g >
+<title>add_to_global_resize (250,000 samples, 0.04%)</title><rect x="265.5" y="485" width="0.5" height="15.0" fill="rgb(239,54,26)" rx="2" ry="2" />
+<text  x="268.54" y="495.5" ></text>
+</g>
+<g >
+<title>bool __gnu_cxx::__ops::_Val_comp_iter&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyNodeIDPairComparator&gt;::operator (3,000,000 samples, 0.50%)</title><rect x="190.6" y="149" width="5.9" height="15.0" fill="rgb(242,120,9)" rx="2" ry="2" />
+<text  x="193.55" y="159.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hash_code_base&lt;long, long, std::__detail::_Identity, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, false&gt;::_M_bucket_index (500,000 samples, 0.08%)</title><rect x="300.6" y="165" width="0.9" height="15.0" fill="rgb(211,57,42)" rx="2" ry="2" />
+<text  x="303.56" y="175.5" ></text>
+</g>
+<g >
+<title>test::BwTreeTestUtil::KeyEqualityChecker::operator (750,000 samples, 0.13%)</title><rect x="224.1" y="181" width="1.5" height="15.0" fill="rgb(225,94,24)" rx="2" ry="2" />
+<text  x="227.10" y="191.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafInsertNode::LeafInsertNode (3,750,000 samples, 0.63%)</title><rect x="50.0" y="229" width="7.4" height="15.0" fill="rgb(220,112,53)" rx="2" ry="2" />
+<text  x="52.96" y="239.5" ></text>
+</g>
+<g >
+<title>__gnu_cxx::__normal_iterator&lt;int*, std::vector&lt;int, std::allocator&lt;int&gt; &gt; &gt;::__normal_iterator (250,000 samples, 0.04%)</title><rect x="334.6" y="245" width="0.5" height="15.0" fill="rgb(236,148,36)" rx="2" ry="2" />
+<text  x="337.60" y="255.5" ></text>
+</g>
+<g >
+<title>void std::thread::_Invoker&lt;std::tuple&lt;common::WorkerPool::AddThread (129,500,000 samples, 21.66%)</title><rect x="10.0" y="469" width="255.5" height="15.0" fill="rgb(211,122,0)" rx="2" ry="2" />
+<text  x="13.00" y="479.5" >void std::thread::_Invoker&lt;std::tu..</text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, long&gt; &gt;::GetNodeHeader (250,000 samples, 0.04%)</title><rect x="31.2" y="213" width="0.5" height="15.0" fill="rgb(228,52,53)" rx="2" ry="2" />
+<text  x="34.21" y="223.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;long, long&gt; const* std::lower_bound&lt;std::pair&lt;long, long&gt; const*, std::pair&lt;long, long&gt;, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairComparator&gt; (2,000,000 samples, 0.33%)</title><rect x="147.6" y="117" width="4.0" height="15.0" fill="rgb(247,92,8)" rx="2" ry="2" />
+<text  x="150.63" y="127.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::GetValue (17,500,000 samples, 2.93%)</title><rect x="274.9" y="309" width="34.5" height="15.0" fill="rgb(244,73,31)" rx="2" ry="2" />
+<text  x="277.91" y="319.5" >bw..</text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, long&gt; &gt;::InlineAllocate (250,000 samples, 0.04%)</title><rect x="12.5" y="245" width="0.5" height="15.0" fill="rgb(249,53,53)" rx="2" ry="2" />
+<text  x="15.47" y="255.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, unsigned long&gt; &gt;::Begin (250,000 samples, 0.04%)</title><rect x="60.8" y="213" width="0.5" height="15.0" fill="rgb(217,188,34)" rx="2" ry="2" />
+<text  x="63.81" y="223.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hash_code_base&lt;int, std::pair&lt;int const, int&gt;, std::__detail::_Select1st, std::hash&lt;int&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, false&gt;::_M_hash_code (250,000 samples, 0.04%)</title><rect x="328.2" y="213" width="0.5" height="15.0" fill="rgb(208,38,34)" rx="2" ry="2" />
+<text  x="331.19" y="223.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;double, std::allocator&lt;double&gt; &gt;::operator[] (26,500,000 samples, 4.43%)</title><rect x="1136.2" y="277" width="52.3" height="15.0" fill="rgb(238,45,41)" rx="2" ry="2" />
+<text  x="1139.23" y="287.5" >std::..</text>
+</g>
+<g >
+<title>void std::vector&lt;long, std::allocator&lt;long&gt; &gt;::_M_realloc_insert&lt;long const&amp;&gt; (1,250,000 samples, 0.21%)</title><rect x="285.8" y="245" width="2.4" height="15.0" fill="rgb(224,73,46)" rx="2" ry="2" />
+<text  x="288.76" y="255.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::GetLatestNodeSnapshot (250,000 samples, 0.04%)</title><rect x="207.8" y="181" width="0.5" height="15.0" fill="rgb(252,8,39)" rx="2" ry="2" />
+<text  x="210.82" y="191.5" ></text>
+</g>
+<g >
+<title>testing::internal::UnitTestImpl::RunAllTests (463,750,000 samples, 77.55%)</title><rect x="273.9" y="421" width="915.1" height="15.0" fill="rgb(228,98,35)" rx="2" ry="2" />
+<text  x="276.92" y="431.5" >testing::internal::UnitTestImpl::RunAllTests</text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::BaseNode::GetType (250,000 samples, 0.04%)</title><rect x="229.5" y="165" width="0.5" height="15.0" fill="rgb(242,213,6)" rx="2" ry="2" />
+<text  x="232.52" y="175.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::_M_deallocate_buckets (250,000 samples, 0.04%)</title><rect x="300.1" y="165" width="0.5" height="15.0" fill="rgb(242,56,17)" rx="2" ry="2" />
+<text  x="303.07" y="175.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hash_code_base&lt;long, long, std::__detail::_Identity, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, false&gt;::_M_bucket_index (500,000 samples, 0.08%)</title><rect x="294.1" y="165" width="1.0" height="15.0" fill="rgb(237,123,1)" rx="2" ry="2" />
+<text  x="297.15" y="175.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, unsigned long&gt; &gt;::GetSize (500,000 samples, 0.08%)</title><rect x="177.2" y="181" width="1.0" height="15.0" fill="rgb(229,65,44)" rx="2" ry="2" />
+<text  x="180.23" y="191.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const** std::__copy_move_backward_a&lt;false, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const**, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafDataNode const**&gt; (1,000,000 samples, 0.17%)</title><rect x="135.3" y="85" width="2.0" height="15.0" fill="rgb(212,17,52)" rx="2" ry="2" />
+<text  x="138.30" y="95.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;long, long&gt; const* std::__lower_bound&lt;std::pair&lt;long, long&gt; const*, std::pair&lt;long, long&gt;, __gnu_cxx::__ops::_Iter_comp_val&lt;bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairComparator&gt; &gt; (250,000 samples, 0.04%)</title><rect x="147.1" y="117" width="0.5" height="15.0" fill="rgb(244,150,23)" rx="2" ry="2" />
+<text  x="150.14" y="127.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;long, long&gt; const* std::lower_bound&lt;std::pair&lt;long, long&gt; const*, std::pair&lt;long, long&gt;, bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::KeyValuePairComparator&gt; (250,000 samples, 0.04%)</title><rect x="264.5" y="213" width="0.5" height="15.0" fill="rgb(221,23,52)" rx="2" ry="2" />
+<text  x="267.55" y="223.5" ></text>
+</g>
+<g >
+<title>handle_preload_list (250,000 samples, 0.04%)</title><rect x="267.5" y="501" width="0.5" height="15.0" fill="rgb(234,28,40)" rx="2" ry="2" />
+<text  x="270.51" y="511.5" ></text>
+</g>
+<g >
+<title>void std::__advance&lt;std::pair&lt;long, unsigned long&gt; const*, long&gt; (1,500,000 samples, 0.25%)</title><rect x="199.4" y="133" width="3.0" height="15.0" fill="rgb(211,218,18)" rx="2" ry="2" />
+<text  x="202.43" y="143.5" ></text>
+</g>
+<g >
+<title>long const&amp; std::__detail::_Identity::operator (250,000 samples, 0.04%)</title><rect x="289.7" y="229" width="0.5" height="15.0" fill="rgb(210,105,29)" rx="2" ry="2" />
+<text  x="292.71" y="239.5" ></text>
+</g>
+<g >
+<title>double std::generate_canonical&lt;double, 53ul, std::linear_congruential_engine&lt;unsigned long, 16807ul, 0ul, 2147483647ul&gt; &gt; (1,500,000 samples, 0.25%)</title><rect x="1133.3" y="229" width="2.9" height="15.0" fill="rgb(248,75,4)" rx="2" ry="2" />
+<text  x="1136.27" y="239.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LeafNode::~LeafNode (3,500,000 samples, 0.59%)</title><rect x="314.4" y="245" width="6.9" height="15.0" fill="rgb(247,142,35)" rx="2" ry="2" />
+<text  x="317.37" y="255.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;long, long, std::allocator&lt;long&gt;, std::__detail::_Identity, std::equal_to&lt;long&gt;, std::hash&lt;long&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, true, true&gt; &gt;::_M_find_node (1,250,000 samples, 0.21%)</title><rect x="293.2" y="213" width="2.4" height="15.0" fill="rgb(237,137,28)" rx="2" ry="2" />
+<text  x="296.16" y="223.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;int, std::allocator&lt;int&gt; &gt;::end (1,000,000 samples, 0.17%)</title><rect x="332.1" y="293" width="2.0" height="15.0" fill="rgb(207,129,13)" rx="2" ry="2" />
+<text  x="335.13" y="303.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hashtable_ebo_helper&lt;1, std::hash&lt;long&gt;, true&gt;::_M_cget (250,000 samples, 0.04%)</title><rect x="295.6" y="117" width="0.5" height="15.0" fill="rgb(205,79,28)" rx="2" ry="2" />
+<text  x="298.63" y="127.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::Traverse (105,250,000 samples, 17.60%)</title><rect x="57.4" y="229" width="207.6" height="15.0" fill="rgb(227,227,46)" rx="2" ry="2" />
+<text  x="60.36" y="239.5" >bwtree::BwTree&lt;long, long, ..</text>
+</g>
+<g >
+<title>std::vector&lt;double, std::allocator&lt;double&gt; &gt;::operator[] (29,000,000 samples, 4.85%)</title><rect x="339.5" y="293" width="57.3" height="15.0" fill="rgb(250,172,4)" rx="2" ry="2" />
+<text  x="342.53" y="303.5" >std::v..</text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::ElasticNode&lt;std::pair&lt;long, long&gt; &gt;::PushBack (5,500,000 samples, 0.92%)</title><rect x="118.5" y="117" width="10.9" height="15.0" fill="rgb(222,116,22)" rx="2" ry="2" />
+<text  x="121.53" y="127.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hashtable_alloc&lt;std::allocator&lt;std::__detail::_Hash_node&lt;long, false&gt; &gt; &gt;::_M_node_allocator (1,000,000 samples, 0.17%)</title><rect x="306.5" y="181" width="2.0" height="15.0" fill="rgb(250,111,20)" rx="2" ry="2" />
+<text  x="309.48" y="191.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::LocateSeparatorByKey (14,000,000 samples, 2.34%)</title><rect x="176.2" y="197" width="27.7" height="15.0" fill="rgb(246,60,8)" rx="2" ry="2" />
+<text  x="179.25" y="207.5" >b..</text>
+</g>
+<g >
+<title>std::pair&lt;std::__strip_reference_wrapper&lt;std::decay&lt;long const&amp;&gt;::type&gt;::__type, std::__strip_reference_wrapper&lt;std::decay&lt;unsigned long&gt;::type&gt;::__type&gt; std::make_pair&lt;long const&amp;, unsigned long&gt; (750,000 samples, 0.13%)</title><rect x="202.4" y="181" width="1.5" height="15.0" fill="rgb(242,202,40)" rx="2" ry="2" />
+<text  x="205.39" y="191.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::InstallNodeToReplace (4,500,000 samples, 0.75%)</title><rect x="41.1" y="229" width="8.9" height="15.0" fill="rgb(214,10,5)" rx="2" ry="2" />
+<text  x="44.08" y="239.5" ></text>
+</g>
+<g >
+<title>bwtree::BwTree&lt;long, long, test::BwTreeTestUtil::KeyComparator, test::BwTreeTestUtil::KeyEqualityChecker, std::hash&lt;long&gt;, std::equal_to&lt;long&gt;, std::hash&lt;long&gt; &gt;::TryConsolidateNode (31,500,000 samples, 5.27%)</title><rect x="95.8" y="197" width="62.2" height="15.0" fill="rgb(228,202,28)" rx="2" ry="2" />
+<text  x="98.84" y="207.5" >bwtree..</text>
+</g>
+<g >
+<title>test::BwTreeTestUtil::KeyComparator::operator (1,500,000 samples, 0.25%)</title><rect x="172.8" y="165" width="3.0" height="15.0" fill="rgb(229,220,7)" rx="2" ry="2" />
+<text  x="175.79" y="175.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;long, unsigned long&gt; const* const&amp; std::max&lt;std::pair&lt;long, unsigned long&gt; const*&gt; (500,000 samples, 0.08%)</title><rect x="210.3" y="197" width="1.0" height="15.0" fill="rgb(228,38,15)" rx="2" ry="2" />
+<text  x="213.28" y="207.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;int, std::pair&lt;int const, int&gt;, std::allocator&lt;std::pair&lt;int const, int&gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;int&gt;, std::hash&lt;int&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, false, true&gt; &gt;::_Scoped_node::~_Scoped_node (250,000 samples, 0.04%)</title><rect x="328.7" y="277" width="0.5" height="15.0" fill="rgb(242,137,54)" rx="2" ry="2" />
+<text  x="331.68" y="287.5" ></text>
+</g>
+<g >
+<title>std::_Hashtable&lt;int, std::pair&lt;int const, int&gt;, std::allocator&lt;std::pair&lt;int const, int&gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;int&gt;, std::hash&lt;int&gt;, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;false, false, true&gt; &gt;::_M_find_before_node (2,250,000 samples, 0.38%)</title><rect x="323.7" y="261" width="4.5" height="15.0" fill="rgb(240,182,23)" rx="2" ry="2" />
+<text  x="326.75" y="271.5" ></text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::__detail::_Hash_node&lt;std::pair&lt;int const, int&gt;, false&gt; &gt; &gt;::deallocate (250,000 samples, 0.04%)</title><rect x="329.7" y="213" width="0.5" height="15.0" fill="rgb(207,74,8)" rx="2" ry="2" />
+<text  x="332.67" y="223.5" ></text>
+</g>
+<g >
+<title>std::__detail::_Hashtable_alloc&lt;std::allocator&lt;std::__detail::_Hash_node&lt;long, false&gt; &gt; &gt;::_M_deallocate_node (500,000 samples, 0.08%)</title><rect x="330.7" y="245" width="0.9" height="15.0" fill="rgb(215,110,12)" rx="2" ry="2" />
+<text  x="333.65" y="255.5" ></text>
+</g>
+<g >
+<title>std::pair&lt;long, long&gt;::pair&lt;long, long, true&gt; (250,000 samples, 0.04%)</title><rect x="54.4" y="213" width="0.5" height="15.0" fill="rgb(251,161,47)" rx="2" ry="2" />
+<text  x="57.40" y="223.5" ></text>
+</g>
+</g>
+</svg>

@@ -1,6 +1,7 @@
 .DS_Store
 *.ipynb
 *.ipynb_checkpoints
+*.data
 settings.json
 workloads/
 !workloads/small/*
