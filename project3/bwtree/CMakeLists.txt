@@ -27,6 +27,7 @@ set(BWTREE_HEADERS
   )
 
 add_library(bwtree STATIC ${BWTREE_HEADERS} ${BWTREE_SOURCES})
+target_link_libraries(bwtree PUBLIC "/usr/local/lib/libjemalloc${CMAKE_SHARED_LIBRARY_SUFFIX}")
 
 target_include_directories(bwtree
   PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/${BWTREE_HEADER_DIR}"

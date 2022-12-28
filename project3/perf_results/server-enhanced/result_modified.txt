@@ -1,0 +1,190 @@
+Running main() from /home/2022_cp_project/student30473/release/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = BwtreeTest.ConcurrentSkewedInsert_?0
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from BwtreeTest
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_00
+8K Insert(): 77.940363 (ms), write throughput: 2102120.052995 (op/s), successive write throughput: 2102120.052995 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_00 (1351 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_10
+8K Insert(): 626.450080 (ms), write throughput: 261537.200219 (op/s), successive write throughput: 261537.200219 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_10 (1024 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_20
+8K Insert(): 13794.450396 (ms), write throughput: 11877.240143 (op/s), successive write throughput: 11877.240143 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_20 (13844 ms)
+[----------] 3 tests from BwtreeTest (16220 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (16220 ms total)
+[  PASSED  ] 3 tests.
+Running main() from /home/2022_cp_project/student30473/release/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = BwtreeTest.ConcurrentSkewedInsert_?0
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from BwtreeTest
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_00
+8K Insert(): 84.161380 (ms), write throughput: 1946736.139545 (op/s), successive write throughput: 1946736.139545 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_00 (1462 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_10
+8K Insert(): 570.814761 (ms), write throughput: 287028.316705 (op/s), successive write throughput: 287028.316705 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_10 (939 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_20
+8K Insert(): 13087.958892 (ms), write throughput: 12518.376727 (op/s), successive write throughput: 12518.376727 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_20 (13149 ms)
+[----------] 3 tests from BwtreeTest (15552 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (15552 ms total)
+[  PASSED  ] 3 tests.
+Running main() from /home/2022_cp_project/student30473/release/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = BwtreeTest.ConcurrentSkewedInsert_?0
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from BwtreeTest
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_00
+8K Insert(): 68.293834 (ms), write throughput: 2399045.278378 (op/s), successive write throughput: 2399045.278378 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_00 (1450 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_10
+8K Insert(): 603.108594 (ms), write throughput: 271659.203052 (op/s), successive write throughput: 271659.203052 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_10 (948 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_20
+8K Insert(): 13109.069887 (ms), write throughput: 12498.216991 (op/s), successive write throughput: 12498.216991 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_20 (13157 ms)
+[----------] 3 tests from BwtreeTest (15556 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (15556 ms total)
+[  PASSED  ] 3 tests.
+Running main() from /home/2022_cp_project/student30473/release/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = BwtreeTest.ConcurrentSkewedInsert_?0
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from BwtreeTest
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_00
+8K Insert(): 103.889871 (ms), write throughput: 1577054.610069 (op/s), successive write throughput: 1577054.610069 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_00 (1517 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_10
+8K Insert(): 606.163716 (ms), write throughput: 270290.015181 (op/s), successive write throughput: 270290.015181 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_10 (951 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_20
+8K Insert(): 12819.081062 (ms), write throughput: 12780.947340 (op/s), successive write throughput: 12780.947340 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_20 (12897 ms)
+[----------] 3 tests from BwtreeTest (15366 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (15366 ms total)
+[  PASSED  ] 3 tests.
+Running main() from /home/2022_cp_project/student30473/release/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = BwtreeTest.ConcurrentSkewedInsert_?0
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from BwtreeTest
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_00
+8K Insert(): 79.933846 (ms), write throughput: 2049694.943992 (op/s), successive write throughput: 2049694.943992 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_00 (1484 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_10
+8K Insert(): 619.642522 (ms), write throughput: 264410.517650 (op/s), successive write throughput: 264410.517650 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_10 (1017 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_20
+8K Insert(): 13070.280648 (ms), write throughput: 12535.308492 (op/s), successive write throughput: 12535.308492 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_20 (13147 ms)
+[----------] 3 tests from BwtreeTest (15649 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (15649 ms total)
+[  PASSED  ] 3 tests.
+Running main() from /home/2022_cp_project/student30473/release/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = BwtreeTest.ConcurrentSkewedInsert_?0
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from BwtreeTest
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_00
+8K Insert(): 86.950509 (ms), write throughput: 1884290.292079 (op/s), successive write throughput: 1884290.292079 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_00 (1578 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_10
+8K Insert(): 550.376500 (ms), write throughput: 297687.128720 (op/s), successive write throughput: 297687.128720 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_10 (868 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_20
+8K Insert(): 13256.439616 (ms), write throughput: 12359.276302 (op/s), successive write throughput: 12359.276302 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_20 (13348 ms)
+[----------] 3 tests from BwtreeTest (15795 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (15795 ms total)
+[  PASSED  ] 3 tests.
+Running main() from /home/2022_cp_project/student30473/release/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = BwtreeTest.ConcurrentSkewedInsert_?0
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from BwtreeTest
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_00
+8K Insert(): 83.394956 (ms), write throughput: 1964627.213185 (op/s), successive write throughput: 1964627.213185 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_00 (1446 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_10
+8K Insert(): 552.498269 (ms), write throughput: 296543.915507 (op/s), successive write throughput: 296543.915507 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_10 (906 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_20
+8K Insert(): 13172.447373 (ms), write throughput: 12438.083475 (op/s), successive write throughput: 12438.083475 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_20 (13227 ms)
+[----------] 3 tests from BwtreeTest (15580 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (15581 ms total)
+[  PASSED  ] 3 tests.
+Running main() from /home/2022_cp_project/student30473/release/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = BwtreeTest.ConcurrentSkewedInsert_?0
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from BwtreeTest
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_00
+8K Insert(): 91.528759 (ms), write throughput: 1790038.473044 (op/s), successive write throughput: 1790038.473044 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_00 (1626 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_10
+8K Insert(): 548.029920 (ms), write throughput: 298961.779313 (op/s), successive write throughput: 298961.779313 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_10 (876 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_20
+8K Insert(): 12932.217498 (ms), write throughput: 12669.134278 (op/s), successive write throughput: 12669.134278 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_20 (13019 ms)
+[----------] 3 tests from BwtreeTest (15522 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (15522 ms total)
+[  PASSED  ] 3 tests.
+Running main() from /home/2022_cp_project/student30473/release/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = BwtreeTest.ConcurrentSkewedInsert_?0
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from BwtreeTest
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_00
+8K Insert(): 67.446701 (ms), write throughput: 2429177.373701 (op/s), successive write throughput: 2429177.373701 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_00 (1438 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_10
+8K Insert(): 618.707121 (ms), write throughput: 264810.270383 (op/s), successive write throughput: 264810.270383 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_10 (956 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_20
+8K Insert(): 12619.209784 (ms), write throughput: 12983.380323 (op/s), successive write throughput: 12983.380323 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_20 (12666 ms)
+[----------] 3 tests from BwtreeTest (15062 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (15062 ms total)
+[  PASSED  ] 3 tests.
+Running main() from /home/2022_cp_project/student30473/release/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = BwtreeTest.ConcurrentSkewedInsert_?0
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from BwtreeTest
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_00
+8K Insert(): 68.037362 (ms), write throughput: 2408088.661639 (op/s), successive write throughput: 2408088.661639 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_00 (1289 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_10
+8K Insert(): 633.589502 (ms), write throughput: 258590.143118 (op/s), successive write throughput: 258590.143118 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_10 (1007 ms)
+[ RUN      ] BwtreeTest.ConcurrentSkewedInsert_20
+8K Insert(): 13999.159849 (ms), write throughput: 11703.559483 (op/s), successive write throughput: 11703.559483 (op/s)
+[       OK ] BwtreeTest.ConcurrentSkewedInsert_20 (14093 ms)
+[----------] 3 tests from BwtreeTest (16391 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (16391 ms total)
+[  PASSED  ] 3 tests.

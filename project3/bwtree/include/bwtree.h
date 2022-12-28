@@ -6572,18 +6572,32 @@ class BwTree : public BwTreeBase {
 
     EpochNode *epoch_node_p = epoch_manager.JoinEpoch();
 
+    #define COUNTER_MECH
+
     while (1) {
       Context context{key};
       std::pair<int, bool> index_pair;
+
+      #ifdef COUNTER_MECH
+      // auto ticket = op_order.fetch_add(1);
+      auto ticket = last_executed_op[1];
+      for(auto i=2;i<=GetThreadNum();++i)
+          ticket = std::max(ticket, last_executed_op[i]);
+      #endif
 
       // Check whether the key-value pair exists
       // Also if the key previously exists in the delta chain
       // then return the position of the node using next_key_p
       // if there is none then return nullptr
+      
       const KeyValuePair *item_p = Traverse(&context, &value, &index_pair, unique_key);
 
       // If the key-value pair already exists then return false
       if (item_p != nullptr) {
+        #ifdef COUNTER_MECH
+        // last_executed_op.fetch_add(1);
+        last_executed_op[gc_id]++;
+        #endif
         epoch_manager.LeaveEpoch(epoch_node_p);
 
         return false;
@@ -6598,7 +6612,31 @@ class BwTree : public BwTreeBase {
       const LeafInsertNode *insert_node_p =
           LeafInlineAllocateOfType(LeafInsertNode, node_p, key, value, node_p, index_pair);
 
+      #ifdef COUNTER_MECH
+      // while(last_executed_op.load() < ticket);
+      int i, j;
+      uint64_t max_op;
+      while(true){
+        j = gc_id;
+        max_op = 0;
+        for(i=1;i<=GetThreadNum();++i){
+          if(max_op < last_executed_op[i]){
+            max_op = last_executed_op[i];
+            j = i;
+          }
+        }
+        if(max_op+1 > ticket){
+          break;
+        }
+        INDEX_LOG_INFO("max_op: %lu, ticket: %lu, gc_id: %d, j: %d", max_op, ticket, gc_id, j);
+      }
+      #endif
+
       bool ret = InstallNodeToReplace(node_id, insert_node_p, node_p);
+      #ifdef COUNTER_MECH
+      // last_executed_op.fetch_add(1);
+      last_executed_op[gc_id]++;
+      #endif
       if (ret) {
         INDEX_LOG_TRACE("Leaf Insert delta CAS succeed");
 
@@ -6914,6 +6952,11 @@ class BwTree : public BwTreeBase {
   const KeyValuePairComparator key_value_pair_cmp_obj;
   const KeyValuePairEqualityChecker key_value_pair_eq_obj;
   const KeyValuePairHashFunc key_value_pair_hash_obj;
+
+  // This value is atomic and is used to serialize the requested operations
+  // std::atomic<uint64_t> last_executed_op;
+  // std::atomic<uint64_t> op_order;
+  PADDING uint64_t last_executed_op[21];
 
   // This value is atomic and will change
   std::atomic<NodeID> root_id;

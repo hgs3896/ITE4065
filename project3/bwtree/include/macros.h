@@ -11,6 +11,7 @@
 #define RESTRICT __restrict__
 #define NEVER_INLINE __attribute__((noinline))
 #define PACKED __attribute__((packed))
+#define PADDING __attribute__((aligned(128)))
 // NOLINTNEXTLINE
 #define FALLTHROUGH [[fallthrough]]
 #define NORETURN __attribute((noreturn))
