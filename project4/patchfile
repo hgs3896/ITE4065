@@ -1,0 +1,197 @@
+diff --git a/src/backend/access/border_collie/border_collie.c b/src/backend/access/border_collie/border_collie.c
+index 907aee3..ec2a7c0 100644
+--- a/src/backend/access/border_collie/border_collie.c
++++ b/src/backend/access/border_collie/border_collie.c
+@@ -6,6 +6,37 @@
+ 
+ Flag *BorderCollieFlags;
+ 
++uint64_t
++BorderCollie(void)
++{
++	uint64_t cutoff, RLB;
++
++	#define MAX(x, y) ((x) > (y) ? (x) : (y))
++	#define MIN(x, y) ((x) < (y) ? (x) : (y))
++
++	cutoff = 0;
++	for(int i = 0; i < NBorderCollieFlags; i++){
++		if(BorderCollieFlags[i].flag.pid)
++			cutoff = MAX(cutoff, BorderCollieFlags[i].flag.LSN);
++	}
++
++	RLB = cutoff;
++
++	for(int i = 0; i < NBorderCollieFlags; i++){
++		if(BorderCollieFlags[i].flag.pid){
++			if(BorderCollieFlags[i].flag.isWorking)
++				RLB = MIN(RLB, BorderCollieFlags[i].flag.LSN);
++			else
++				RLB = MIN(RLB, MAX(cutoff, BorderCollieFlags[i].flag.LSN));
++		}
++	}
++
++	#undef MAX
++	#undef MIN
++
++	return RLB;
++}
++
+ Size
+ BorderCollieFlagsSize(void)
+ {
+diff --git a/src/backend/access/transam/xlog.c b/src/backend/access/transam/xlog.c
+index 248a40e..b85dafb 100644
+--- a/src/backend/access/transam/xlog.c
++++ b/src/backend/access/transam/xlog.c
+@@ -106,6 +106,8 @@
+ #include "utils/timeout.h"
+ #include "utils/timestamp.h"
+ 
++#include "access/border_collie.h"
++
+ extern uint32 bootstrap_data_checksum_version;
+ 
+ /* timeline ID to be used when bootstrapping */
+@@ -1842,7 +1844,16 @@ AdvanceXLInsertBuffer(XLogRecPtr upto, TimeLineID tli, bool opportunistic)
+ 					TRACE_POSTGRESQL_WAL_BUFFER_WRITE_DIRTY_START();
+ 					WriteRqst.Write = OldPageRqstPtr;
+ 					WriteRqst.Flush = 0;
++					#ifdef USE_BORDER_COLLIE
++					if(!BorderCollieFlags[MyProcPid % NBorderCollieFlags].flag.pid)
++						BorderCollieFlags[MyProcPid % NBorderCollieFlags].flag.pid = MyProcPid;
++					BorderCollieFlags[MyProcPid % NBorderCollieFlags].flag.isWorking = true;
++					#endif
+ 					XLogWrite(WriteRqst, tli, false);
++					#ifdef USE_BORDER_COLLIE
++					BorderCollieFlags[MyProcPid % NBorderCollieFlags].flag.LSN = WriteRqst.Write;
++					BorderCollieFlags[MyProcPid % NBorderCollieFlags].flag.isWorking = false;
++					#endif
+ 					LWLockRelease(WALWriteLock);
+ 					PendingWalStats.wal_buffers_full++;
+ 					TRACE_POSTGRESQL_WAL_BUFFER_WRITE_DIRTY_DONE();
+@@ -2559,11 +2570,20 @@ XLogFlush(XLogRecPtr record)
+ 		XLogRecPtr	insertpos;
+ 
+ 		/* read LogwrtResult and update local state */
++		#ifndef USE_BORDER_COLLIE
+ 		SpinLockAcquire(&XLogCtl->info_lck);
+ 		if (WriteRqstPtr < XLogCtl->LogwrtRqst.Write)
+ 			WriteRqstPtr = XLogCtl->LogwrtRqst.Write;
+ 		LogwrtResult = XLogCtl->LogwrtResult;
+ 		SpinLockRelease(&XLogCtl->info_lck);
++		#else
++		SpinLockAcquire(&XLogCtl->info_lck);
++		XLogRecPtr HowFarWrite = BorderCollie();
++		if (WriteRqstPtr < HowFarWrite)
++			WriteRqstPtr = HowFarWrite;
++		LogwrtResult = XLogCtl->LogwrtResult;
++		SpinLockRelease(&XLogCtl->info_lck);
++		#endif
+ 
+ 		/* done already? */
+ 		if (record <= LogwrtResult.Flush)
+@@ -2631,7 +2651,16 @@ XLogFlush(XLogRecPtr record)
+ 		WriteRqst.Write = insertpos;
+ 		WriteRqst.Flush = insertpos;
+ 
++		#ifdef USE_BORDER_COLLIE
++		if(!BorderCollieFlags[MyProcPid % NBorderCollieFlags].flag.pid)
++			BorderCollieFlags[MyProcPid % NBorderCollieFlags].flag.pid = MyProcPid;
++		BorderCollieFlags[MyProcPid % NBorderCollieFlags].flag.isWorking = true;
++		#endif
+ 		XLogWrite(WriteRqst, insertTLI, false);
++		#ifdef USE_BORDER_COLLIE
++		BorderCollieFlags[MyProcPid % NBorderCollieFlags].flag.LSN = WriteRqst.Write;
++		BorderCollieFlags[MyProcPid % NBorderCollieFlags].flag.isWorking = false;
++		#endif
+ 
+ 		LWLockRelease(WALWriteLock);
+ 		/* done */
+@@ -2805,7 +2834,16 @@ XLogBackgroundFlush(void)
+ 	if (WriteRqst.Write > LogwrtResult.Write ||
+ 		WriteRqst.Flush > LogwrtResult.Flush)
+ 	{
++		#ifdef USE_BORDER_COLLIE
++		if(!BorderCollieFlags[MyProcPid % NBorderCollieFlags].flag.pid)
++			BorderCollieFlags[MyProcPid % NBorderCollieFlags].flag.pid = MyProcPid;
++		BorderCollieFlags[MyProcPid % NBorderCollieFlags].flag.isWorking = true;
++		#endif
+ 		XLogWrite(WriteRqst, insertTLI, flexible);
++		#ifdef USE_BORDER_COLLIE
++		BorderCollieFlags[MyProcPid % NBorderCollieFlags].flag.LSN = WriteRqst.Write;
++		BorderCollieFlags[MyProcPid % NBorderCollieFlags].flag.isWorking = false;
++		#endif
+ 	}
+ 	LWLockRelease(WALWriteLock);
+ 
+diff --git a/src/backend/postmaster/border_collie_process.c b/src/backend/postmaster/border_collie_process.c
+index 8fb7969..1f045cc 100644
+--- a/src/backend/postmaster/border_collie_process.c
++++ b/src/backend/postmaster/border_collie_process.c
+@@ -42,6 +42,8 @@
+ #include "utils/resowner.h"
+ #include "utils/timestamp.h"
+ 
++#include "access/border_collie.h"
++
+ /*
+  * GUC parameters
+  */
+@@ -198,6 +200,13 @@ BorderCollieProcessMain(void)
+ 		cur_timeout = BorderCollieDelay;
+ 
+ 		ereport(LOG, (errmsg("[BorderCollie] %d second", tick)));
++		for(int i = 0; i < NBorderCollieFlags; ++i)
++			if(BorderCollieFlags[i].flag.pid)
++				ereport(LOG, (errmsg("[BorderCollie] [%lld][%s] %lld", 
++					BorderCollieFlags[i].flag.pid,
++					BorderCollieFlags[i].flag.isWorking ? "Work" : "Idle",
++					BorderCollieFlags[i].flag.LSN)
++				));
+ 
+ 		++tick;
+ 
+diff --git a/src/backend/utils/init/globals.c b/src/backend/utils/init/globals.c
+index e9b44c8..7073832 100644
+--- a/src/backend/utils/init/globals.c
++++ b/src/backend/utils/init/globals.c
+@@ -18,7 +18,9 @@
+  */
+ #include "postgres.h"
+ 
++#ifdef __linux__
+ #include <sys/sysinfo.h>
++#endif
+ 
+ #include "common/file_perm.h"
+ #include "libpq/libpq-be.h"
+diff --git a/src/include/access/border_collie.h b/src/include/access/border_collie.h
+index 1b07f6f..9a7aca4 100644
+--- a/src/include/access/border_collie.h
++++ b/src/include/access/border_collie.h
+@@ -12,10 +12,23 @@
+ #ifndef BORDER_COLLIE_H 
+ #define BORDER_COLLIE_H
+ 
+-typedef uint64_t Flag;
++#define USE_BORDER_COLLIE
++
++union BorderCollieFlagData{
++    struct{
++        bool isWorking;
++        uint64_t pid;
++        uint64_t LSN;
++    } flag;
++    char padd[128];
++};
++typedef union BorderCollieFlagData Flag;
+ 
+ extern PGDLLIMPORT int NBorderCollieFlags;
+ 
++extern Flag *BorderCollieFlags;
++
++extern uint64_t BorderCollie(void);
+ extern Size BorderCollieFlagsSize(void);
+ extern void BorderCollieFlagsInit(void);
+ 
