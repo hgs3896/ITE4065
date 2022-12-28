@@ -8,11 +8,11 @@ This repo is to mirror the original hconnect gitlab repository.
 
 This project is improving the performance of sequential join processing code which is given. Introducing parallel/concurrent execution models I've learned during the class, I was able to enhance the execution time from 75 secs to 15 secs.
 
-### [2. Project 2 - Wait-free Atomic Snapshot]((project2/README.md))
+### [2. Project 2 - Wait-free Atomic Snapshot](project2/README.md)
 
 This project is implementing a wait-free atomic snapshot suggested in the textbook(The art of multiprocessor programming).
 
-### [3. Project 3 - Improve the Bw-Tree]((project3/README.md))
+### [3. Project 3 - Improve the Bw-Tree](project3/README.md)
 
 This project is to analyze the open Bw-tree and improve it **by yourself**, which means you need to tackle which factors are problematic and to prove whether it is problematic in fact.
 
