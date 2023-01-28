@@ -144,7 +144,7 @@ Thus, the cache invalidation is the main performance bottleneck for skewed workl
 
 > 
 
-![Problem Definition](problem_description.pnd)
+![Problem Definition](problem_description.png)
 
 Frequent cache invalidation is the key to solve the CAS performance on mapping table entries.
 
